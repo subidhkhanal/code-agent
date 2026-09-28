@@ -1,0 +1,11 @@
+.git
+.venv
+.agent
+.vscode
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+benchmarks/.repos
+evals/**/runs
+tests
+docs
