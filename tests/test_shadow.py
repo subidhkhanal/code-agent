@@ -155,3 +155,19 @@ def test_new_files_are_validated_too(repo: Path, shadow):
     plan = plan_for(repo, ("auth/helpers.py", "", "def f():\n    return undefined_thing\n"))
     report = ShadowValidator(shadow).validate(plan)
     assert any(d.file == "auth/helpers.py" and d.rule == "F821" for d in report.new_diagnostics)
+
+
+def test_pytest_that_cannot_run_is_never_reported_as_ok(repo: Path, shadow, tmp_path: Path):
+    # Found running headless in Docker: the interpreter had no pytest, and validation said
+    # "pytest ok". A run with no per-test results must be reported as not validated.
+    plan = plan_for(repo, ("auth/tokens.py", BUGGY, FIXED))
+    fake_python = tmp_path / ("python.bat" if __import__("os").name == "nt" else "python.sh")
+    if fake_python.suffix == ".bat":
+        fake_python.write_text("@echo No module named pytest\r\n@exit /b 1\r\n")
+    else:
+        fake_python.write_text("#!/bin/sh\necho 'No module named pytest'\nexit 1\n")
+        fake_python.chmod(0o755)
+    report = ShadowValidator(shadow, python=str(fake_python)).validate(plan)
+    assert "pytest" not in report.attempted
+    assert any("could not run" in s and "No module named pytest" in s for s in report.skipped)
+    assert "pytest ok" not in report.summary()

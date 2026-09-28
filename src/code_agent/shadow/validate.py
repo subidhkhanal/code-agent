@@ -254,8 +254,11 @@ class ShadowValidator:
                                   d.get("rule", ""), d["message"].split("\n")[0]))  # fmt: skip
         return out
 
-    def _pytest(self, test_files: list[str]) -> tuple[dict[str, bool], str]:
-        """test id -> passed, plus the tail of the output."""
+    def _pytest(self, test_files: list[str]) -> tuple[dict[str, bool], str, str | None]:
+        """(test id -> passed, tail of the output, reason pytest could not run or None).
+
+        A run that produced no per-test results is not a pass: pytest may be missing from the
+        interpreter, or collection may have crashed. That is reported, never counted as ok."""
         with tempfile.TemporaryDirectory() as tmp:
             junit = Path(tmp) / "junit.xml"
             result = self._run(
@@ -271,9 +274,14 @@ class ShadowValidator:
                     if not skipped:
                         outcomes[test_id] = not failed
         tail = "\n".join(result.output.strip().splitlines()[-40:])
+        problem = None
         if result.timed_out:
             tail += "\n[pytest timed out]"
-        return outcomes, tail
+            problem = "timed out"
+        elif not outcomes and result.exit_code not in (0, 5):  # 5 = no tests collected
+            last = result.output.strip().splitlines()[-1:] or [f"exit code {result.exit_code}"]
+            problem = f"could not run: {last[0][:160]}"
+        return outcomes, tail, problem
 
     # -- validation ---------------------------------------------------------------------------
 
@@ -308,7 +316,7 @@ class ShadowValidator:
         pre_existing_tests = [t for t in tests if (self.shadow.root / t).exists()]
         missing_tests = [t for t in pre_existing_tests if t not in self._test_baseline]
         if missing_tests:
-            baseline, _ = self._pytest(missing_tests)
+            baseline, _, _ = self._pytest(missing_tests)
             for t in missing_tests:
                 self._test_baseline[t] = {k: v for k, v in baseline.items()
                                           if k.startswith(_test_prefix(t))}  # fmt: skip
@@ -322,9 +330,13 @@ class ShadowValidator:
                 report.new_diagnostics.append(d)
 
         if tests:
+            outcomes, report.test_output, problem = self._pytest(tests)
+            if problem is not None:
+                report.skipped.append(f"pytest ({problem})")
+                report.warnings.append(f"pytest {problem}; tests were not validated")
+                return report
             report.attempted.append("pytest")
             report.tests_run = tests
-            outcomes, report.test_output = self._pytest(tests)
             before: dict[str, bool] = {}
             for t in tests:
                 before.update(self._test_baseline.get(t, {}))
