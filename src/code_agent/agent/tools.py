@@ -146,6 +146,10 @@ class ToolDeniedError(ToolError):
     """The user (or policy) refused the action."""
 
 
+class ToolCancelledError(ToolError):
+    """The task was cancelled while the tool was running (e.g. Ctrl+C during a command)."""
+
+
 def _truncate(text: str, limit: int = MAX_OUTPUT_CHARS) -> tuple[str, bool]:
     if len(text) <= limit:
         return text, False
@@ -316,6 +320,8 @@ def run_terminal_command(ctx: ToolContext, args: CommandArgs) -> ToolOutput:
     except OSError as exc:
         # e.g. a shell built-in such as Windows `dir`/`echo`, which has no executable to start
         raise ToolError(f"could not start `{argv[0]}`: {exc.strerror or exc}") from exc
+    if result.cancelled:
+        raise ToolCancelledError(f"`{args.command}` was cancelled; its process tree was killed")
     return ToolOutput(f"[{c.summary}]\n{result.render()}", approval.approval_id, key)
 
 
@@ -381,6 +387,9 @@ class ToolRegistry:
                 except ToolDeniedError as exc:
                     result = ToolResult(call.name, str(exc), is_error=True)
                     status = "denied"
+                except ToolCancelledError as exc:
+                    result = ToolResult(call.name, str(exc), is_error=True)
+                    status = "cancelled"
                 except ToolError as exc:
                     result = ToolResult(call.name, str(exc), is_error=True)
                     status = "error"
