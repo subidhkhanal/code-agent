@@ -20,6 +20,7 @@ dependencies = [
     "sqlite-vec>=0.1.6",
     "fastembed>=0.4",
     "watchdog>=4.0",
+    "rapidfuzz>=3.0",
 ]
 
 [project.optional-dependencies]
