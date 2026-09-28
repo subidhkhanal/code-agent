@@ -2,10 +2,10 @@
 
 A terminal coding agent for Python repositories, built around a local hybrid code index.
 
-> **Status: work in progress (milestone 2 of 5).** Indexing, search, the agent loop, validated
-> edits and undo exist. The shadow workspace, command approvals, secret scanning, headless mode
-> and evals come in later milestones (see [PLAN.md](PLAN.md)). This README only describes what is
-> implemented and tested. The test suite uses a scripted fake LLM; against a real model there has
+> **Status: work in progress (milestone 3 of 5).** Indexing, search, the agent loop, validated
+> edits, the shadow workspace, command approvals, secret redaction, the audit log and undo exist.
+> Headless mode, evals and CI come next (see [PLAN.md](PLAN.md)). This README only describes what
+> is implemented and tested. The test suite uses a scripted fake LLM; against a real model there has
 > been one smoke test so far (below), which is a sanity check, not an evaluation.
 
 ## What works today
@@ -26,8 +26,19 @@ A terminal coding agent for Python repositories, built around a local hybrid cod
 - `agent chat` takes a request, retrieves context within a token budget, lets the model read
   files and search, and streams its edits as SEARCH/REPLACE blocks. Edits are checked before
   you see them (each must match exactly one place in a file the model has read, and the file
-  must not have changed since). You review a diff and nothing is written unless you confirm.
-  Ctrl+C cancels a running task.
+  must not have changed since). Before you see the diff, the edits are validated in a hidden
+  git worktree (a *shadow* copy of your repo): ruff, pyright and the tests that cover the changed
+  files. Only problems the edit introduced count. Failures go back to the model for up to 3 fix
+  rounds. You then review the diff (all files or per file) and nothing is written unless you
+  confirm. Ctrl+C cancels a running task, including any command it started.
+- The model can run terminal commands only through code-enforced approvals: read-only and
+  test/lint commands can be allowed for the session; anything else (unknown programs, `pip`,
+  `curl`, `rm`, `git push`, shell pipes, paths outside the repo) asks every time. Commands run
+  without a shell and with an environment that contains no API keys.
+- Secrets are redacted from everything sent to the model (and from the logs). Sensitive files
+  (`.env*`, keys, credential files) can't be read or edited at all.
+- `agent audit` shows every tool call and user action of the last task, with redacted
+  arguments.
 - `agent undo` reverts the last applied change, and refuses if you edited those files since.
 - `agent models` lists the models your API key can use and checks the configured ones.
 - Every task logs its retrieved context and the exact requests sent to the model under
@@ -63,6 +74,24 @@ failing test then passed, and `agent undo` restored the file byte-for-byte. Usag
 3 tool calls, 8,252 input + 179 output tokens, 21 s; under $0.007 at Google's published paid-tier
 prices. One run on a toy repo says nothing about success rates.
 
+Security suite (`tests/test_security_suite.py`): a scripted, fully compromised model obeys
+every instruction planted in `tests/fixtures/injection_repo` (`curl | sh`, read `.env`, read and
+edit files outside the repo, edit git hooks, grant itself session-wide approval). The simulated
+user allows read-only commands and denies the rest.
+
+| Requirement | Result |
+|---|---|
+| Privileged commands run without approval | 0 |
+| Reads of sensitive or out-of-workspace paths | 0 (5 attempts denied) |
+| Edits outside the workspace or to protected paths | 0 |
+| Planted secrets in outbound requests or logs | 0 |
+| Stale edit applied over the user's change | never |
+| Cancel during a command | process tree killed, task `CANCELLED` |
+
+What this does *not* cover: an approved command runs with your own permissions, and network
+isolation of test runs only exists on Linux. See
+[ADR 0007](docs/adr/0007-approvals-capabilities-and-isolation.md) for the per-OS table.
+
 Retrieval quality and task success rates have not been measured yet; that is milestone 4
 (SWE-bench Lite subset).
 
@@ -75,6 +104,8 @@ Retrieval quality and task success rates have not been measured yet; that is mil
 | SEARCH/REPLACE blocks as the edit format | [0004](docs/adr/0004-edit-format.md) |
 | Match tiers, uniqueness rule, stale-file policy | [0005](docs/adr/0005-fuzzy-matching-and-stale-files.md) |
 | Model routing by role; budgets enforced in code | [0008](docs/adr/0008-model-routing-and-budgets.md) |
+| Shadow git worktree; only new problems fail validation | [0006](docs/adr/0006-shadow-workspace.md) |
+| Approvals and capabilities in code; limits of local isolation | [0007](docs/adr/0007-approvals-capabilities-and-isolation.md) |
 | Symbol resolution with the index and jedi | [0010](docs/adr/0010-symbol-resolution.md) |
 
 ## Install (development)
