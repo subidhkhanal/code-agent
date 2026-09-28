@@ -22,12 +22,28 @@ A terminal coding agent for Python repositories, built around a local hybrid cod
   with reciprocal rank fusion. If the embedding model is unavailable it falls back to
   symbol + BM25 and says so.
 
+## Measured so far
+
+Indexing [pytest 8.3.4](https://github.com/pytest-dev/pytest) (563 files, 6,950 chunks) on a
+laptop CPU (i5-13420H, no GPU), from `benchmarks/bench_index.py`:
+
+| | |
+|---|---|
+| Keyword + symbol index ready | 2.1 s |
+| All embeddings computed (bge-small, local) | ~10 min, one-time |
+| Re-sync with nothing changed | 0.42 s |
+| One edited file re-indexed (what `--watch` does on save) | p50 263 ms, p95 383 ms |
+
+Retrieval quality has not been measured yet; that is milestone 4 (recall@k on a SWE-bench Lite
+subset). Design notes: [ADR 0002](docs/adr/0002-index-storage-and-embeddings.md) (storage and
+embeddings), [ADR 0003](docs/adr/0003-ast-chunking.md) (chunking).
+
 ## Install (development)
 
 ```bash
 python -m venv .venv
 .venv/bin/pip install -e ".[dev]"      # Windows: .venv\Scripts\pip
-agent index            # first run downloads the embedding model once
+agent index            # first run downloads the embedding model once (~70 MB)
 agent search "where are expired tokens rejected"
 ```
 
