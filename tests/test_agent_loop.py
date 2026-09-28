@@ -45,6 +45,7 @@ class Harness:
         script: Sequence[FakeScriptItem],
         *,
         history: int = 60_000,
+        validator=None,
         **budget,
     ) -> None:
         self.indexed = indexed
@@ -69,6 +70,7 @@ class Harness:
             context_budget_tokens=8_000,
             history_budget_tokens=history,
             on_event=self.events.append,
+            validator=validator,
         )
 
     def run(self, task: str = "fix the bug where expired tokens are still accepted", cancel=None):
@@ -249,3 +251,79 @@ def test_injected_text_in_tool_output_cannot_grant_tools(indexed: IndexedRepo, i
     assert result.status is TaskStatus.SUCCEEDED
     tool_results = [m.content for m in h.fake.requests[-1].messages if m.role == "tool"]
     assert "tool 'run_terminal_command' is not permitted" in tool_results[-1]
+
+
+# -- auto-fix rounds with a (stub) shadow validator ----------------------------------------------
+
+TYPO_REPLY = FIX_REPLY.replace("time.time()", "time.tme()")
+FOLLOW_UP = """Fix the typo.
+
+auth/tokens.py
+<<<<<<< SEARCH
+        return token.expires_at > time.tme()
+=======
+        return token.expires_at > time.time()
+>>>>>>> REPLACE
+"""
+
+
+def typo_validator(calls: list):
+    from code_agent.shadow.validate import Diagnostic, ValidationReport
+
+    def validate(plan):
+        calls.append(plan)
+        after = plan.changes["auth/tokens.py"].after
+        report = ValidationReport(attempted=["pyright"])
+        if b"time.tme" in after:
+            report.new_diagnostics.append(Diagnostic(
+                "pyright", "auth/tokens.py", 33, "reportAttributeAccessIssue",
+                '"tme" is not a known attribute of module "time"'))  # fmt: skip
+        return report
+
+    return validate
+
+
+def test_failed_validation_feeds_back_and_fix_builds_on_previous_edit(indexed: IndexedRepo):
+    from code_agent.agent.loop import ValidationDone
+
+    calls: list = []
+    original = (indexed.root / "auth/tokens.py").read_bytes()
+    h = Harness(
+        indexed,
+        [REWRITE, FakeTurn(TYPO_REPLY), read("auth/tokens.py"), FakeTurn(FOLLOW_UP)],
+        validator=typo_validator(calls),
+    )
+    result = h.run()
+
+    assert result.status is TaskStatus.SUCCEEDED and result.message == "edits validated"
+    assert result.usage.fix_attempts == 2 and len(calls) == 2
+    change = result.plan.changes["auth/tokens.py"]
+    assert change.before == original  # one combined change: original -> final
+    assert FIXED.encode() in change.after and b"time.tme" not in change.after
+    assert result.validation is not None and result.validation.ok
+
+    feedback = h.last_user_text(h.fake.requests[2])
+    assert '"tme" is not a known attribute' in feedback and "kept in the sandbox" in feedback
+    tool_out = next(m.content for m in h.fake.requests[3].messages if m.role == "tool")
+    assert "time.tme()" in tool_out  # read_file showed the pending (overlay) edit
+    assert (indexed.root / "auth/tokens.py").read_bytes() == original  # disk untouched
+    assert [e.report.ok for e in h.events if isinstance(e, ValidationDone)] == [False, True]
+
+
+def test_validation_gives_up_after_max_fix_attempts_and_shows_diagnostics(indexed: IndexedRepo):
+    stuck = FakeTurn("Trying again.\n\nauth/tokens.py\n<<<<<<< SEARCH\n        return token."
+                     "expires_at > time.tme()\n=======\n        return token.expires_at > "
+                     "time.tme()  # still wrong\n>>>>>>> REPLACE\n")  # fmt: skip
+    h = Harness(indexed, [REWRITE, FakeTurn(TYPO_REPLY), stuck],
+                validator=typo_validator([]), max_fix_attempts=2)  # fmt: skip
+    result = h.run()
+    assert result.status is TaskStatus.SUCCEEDED and "still failing" in result.message
+    assert result.plan is not None and result.validation is not None
+    assert not result.validation.ok and result.usage.fix_attempts == 2
+
+
+def test_no_validator_means_no_validation_round(indexed: IndexedRepo):
+    h = Harness(indexed, [REWRITE, FakeTurn(FIX_REPLY)])
+    result = h.run()
+    assert result.validation is None and result.usage.fix_attempts == 0
+    assert result.message == "edits ready for review"

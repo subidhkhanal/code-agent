@@ -122,6 +122,23 @@ class BudgetConfig(_Strict):
     max_tool_calls: int = Field(default=60, ge=1)
     max_seconds: int = Field(default=900, ge=10)
     max_edit_attempts: int = Field(default=3, ge=1, le=10)
+    max_fix_attempts: int = Field(
+        default=3, ge=1, le=10, description="Shadow-validation rounds before asking the user"
+    )
+
+
+class ValidationConfig(_Strict):
+    """Shadow-workspace validation (ADR 0006)."""
+
+    enabled: bool = True
+    lint: bool = True
+    type_check: bool = True
+    tests: bool = Field(default=True, description="Targeted tests; asks for approval first")
+    python: Path | None = Field(
+        default=None, description="Interpreter for tests (default: the repo's .venv, if any)"
+    )
+    test_timeout_s: int = Field(default=300, ge=10)
+    full_suite_max_test_files: int = Field(default=30, ge=0)
 
 
 class AgentConfig(_Strict):
@@ -129,6 +146,7 @@ class AgentConfig(_Strict):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     budgets: BudgetConfig = Field(default_factory=BudgetConfig)
+    validation: ValidationConfig = Field(default_factory=ValidationConfig)
     model_cache_dir: Path = Field(
         default_factory=lambda: Path.home() / ".cache" / "code-agent" / "models",
         description="Where embedding model weights are cached (downloaded once).",

@@ -25,13 +25,15 @@ from code_agent.agent.prompts import (
     SYSTEM_PROMPT,
     rejection_message,
     task_message,
+    validation_message,
 )
 from code_agent.agent.tasks import TaskStatus, TaskUsage
 from code_agent.agent.tools import ToolRegistry
 from code_agent.config import BudgetConfig
 from code_agent.context.assembly import ContextAssembler, ContextBundle, estimate_tokens
-from code_agent.edits.apply import ApplyPlan, Planner
+from code_agent.edits.apply import ApplyPlan, Planner, compose
 from code_agent.edits.parser import EditBlock, ParseError, StreamingEditParser, Text
+from code_agent.hashing import sha256_bytes
 from code_agent.llm.gateway import Gateway, GenerationUnavailableError
 from code_agent.llm.types import (
     CancelledError,
@@ -43,6 +45,7 @@ from code_agent.llm.types import (
     ToolCall,
     ToolCallEvent,
 )
+from code_agent.shadow.validate import ValidationReport
 
 ELIDED = "[older tool output elided to stay within the context budget]"
 
@@ -88,6 +91,18 @@ class EditsRejected:
     attempt: int
 
 
+@dataclass(frozen=True)
+class ValidationStarted:
+    files: list[str]
+    attempt: int
+
+
+@dataclass(frozen=True)
+class ValidationDone:
+    report: ValidationReport
+    attempt: int
+
+
 AgentEvent = (
     Status
     | RetrievalDone
@@ -96,7 +111,12 @@ AgentEvent = (
     | ToolStarted
     | ToolFinished
     | EditsRejected
+    | ValidationStarted
+    | ValidationDone
 )
+
+# Validates a candidate change set in the shadow workspace (M3). None = no validation.
+Validator = Callable[[ApplyPlan], ValidationReport]
 
 
 # -- budgets -------------------------------------------------------------------------------------
@@ -149,6 +169,7 @@ class TaskResult:
     usage: TaskUsage = field(default_factory=TaskUsage)
     rejections: list[str] = field(default_factory=list)  # ApplyErrorCode / parse error per block
     bundle: ContextBundle | None = None
+    validation: ValidationReport | None = None  # last shadow validation of `plan`
 
 
 @dataclass
@@ -176,6 +197,7 @@ class AgentLoop:
         history_budget_tokens: int,
         max_output_tokens: int = 8192,
         on_event: Callable[[AgentEvent], None] = lambda _: None,
+        validator: Validator | None = None,
     ) -> None:
         self.gateway = gateway
         self.tools = tools
@@ -186,6 +208,7 @@ class AgentLoop:
         self.history_budget_tokens = history_budget_tokens
         self.max_output_tokens = max_output_tokens
         self.emit = on_event
+        self.validator = validator
 
     def run(self, task: str, cancel: CancelToken | None = None) -> TaskResult:
         cancel = cancel or CancelToken()
@@ -210,6 +233,7 @@ class AgentLoop:
         self.tools.ctx.base_hashes.update(bundle.base_hashes)
         self.emit(RetrievalDone(bundle))
 
+        combined: ApplyPlan | None = None  # edits accumulated across auto-fix rounds
         messages = [
             Message("system", SYSTEM_PROMPT),
             Message("user", task_message(task, bundle.render())),
@@ -250,12 +274,14 @@ class AgentLoop:
                 result.status, result.message = TaskStatus.SUCCEEDED, "answered without edits"
                 return
 
-            plan = self.planner.plan(turn.blocks, self.tools.ctx.base_hashes)
+            ctx = self.tools.ctx
+            plan = self.planner.plan(turn.blocks, ctx.base_hashes, ctx.overlay)
             feedback = "\n".join(e.message for e in turn.parse_errors)
             if plan.ok and not turn.parse_errors:
-                result.plan = plan
-                result.status, result.message = TaskStatus.SUCCEEDED, "edits ready for review"
-                return
+                combined = compose(combined, plan)
+                if self._validated(combined, meter, result, messages):
+                    return
+                continue
 
             meter.usage.edit_attempts += 1
             result.rejections += [str(r.error) for r in plan.errors] + ["PARSE_ERROR"] * len(
@@ -269,6 +295,45 @@ class AgentLoop:
                 result.message = f"edits still rejected after {meter.usage.edit_attempts} attempts"
                 return
             messages.append(Message("user", rejection_message(feedback, left)))
+
+    def _validated(
+        self,
+        combined: ApplyPlan,
+        meter: Meter,
+        result: TaskResult,
+        messages: list[Message],
+    ) -> bool:
+        """Validate the cumulative change set. True = the task is done (validated, or out of fix
+        attempts); False = feedback was queued and the loop should continue."""
+        result.plan = combined
+        if self.validator is None:
+            result.status, result.message = TaskStatus.SUCCEEDED, "edits ready for review"
+            return True
+        meter.usage.fix_attempts += 1
+        attempt = meter.usage.fix_attempts
+        self.emit(ValidationStarted(sorted(combined.changes), attempt))
+        report = self.validator(combined)
+        result.validation = report
+        self.emit(ValidationDone(report, attempt))
+        if report.ok:
+            result.status, result.message = TaskStatus.SUCCEEDED, "edits validated"
+            return True
+        if attempt >= self.budgets.max_fix_attempts:
+            result.status = TaskStatus.SUCCEEDED
+            result.message = (
+                f"validation still failing after {attempt} attempt(s); review the diagnostics "
+                "before applying"
+            )
+            return True
+        # Keep the edits in the overlay so the model builds on them rather than starting over.
+        ctx = self.tools.ctx
+        for rel, change in combined.changes.items():
+            ctx.overlay[rel] = change.after
+            ctx.base_hashes[rel] = sha256_bytes(change.after)
+        messages.append(Message("user", validation_message(
+            report.feedback(), self.budgets.max_fix_attempts - attempt
+        )))  # fmt: skip
+        return False
 
     def _rewrite(self, task: str, cancel: CancelToken, meter: Meter) -> list[str]:
         """Cheap model turns the request into search queries. Falls back to the raw request."""

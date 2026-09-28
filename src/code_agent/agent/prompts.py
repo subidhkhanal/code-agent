@@ -47,6 +47,15 @@ def task_message(task: str, context: str) -> str:
     return f"Task: {task}\n\n{context}"
 
 
+def validation_message(feedback: str, attempts_left: int) -> str:
+    return (
+        f"{feedback}\n\n"
+        "Your edits are kept in the sandbox copy, and read_file now shows the edited files. "
+        "Send ADDITIONAL edit blocks, written against the edited content, that fix these "
+        f"problems ({attempts_left} attempt(s) left). Do not re-send the edits already made."
+    )
+
+
 def rejection_message(feedback: str, attempts_left: int) -> str:
     return (
         "Your edit blocks were NOT applied; nothing was changed. Problems:\n\n"

@@ -29,6 +29,7 @@ class TaskUsage:
     llm_calls: int = 0
     tool_calls: int = 0
     edit_attempts: int = 0
+    fix_attempts: int = 0
 
     @property
     def tokens(self) -> int:
