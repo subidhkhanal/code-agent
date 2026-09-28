@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import tomllib
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -63,9 +64,58 @@ class RetrievalConfig(_Strict):
     rrf_k: int = Field(default=60, ge=1, description="RRF damping constant (60 is the usual value)")
 
 
+class ProviderConfig(_Strict):
+    kind: Literal["gemini"] = "gemini"
+    api_key_env: str = Field(
+        default="GEMINI_API_KEY", description="Name of the env var holding the key (not the key)"
+    )
+    base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    timeout_s: float = Field(default=120.0, gt=0)
+
+
+class PriceConfig(_Strict):
+    input_per_mtok: float = Field(ge=0, description="USD per million input tokens")
+    output_per_mtok: float = Field(ge=0, description="USD per million output tokens")
+
+
+class LLMConfig(_Strict):
+    """No model names are built in: routes must be configured, and are checked against the
+    provider's live model list before use (`agent models` lists what is available)."""
+
+    providers: dict[str, ProviderConfig] = Field(
+        default_factory=lambda: {"gemini": ProviderConfig()}
+    )
+    routes: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="role -> ['provider:model', <fallbacks>...]. Roles: 'cheap' (planning, "
+        "query rewriting) and 'strong' (edits).",
+    )
+    pricing: dict[str, PriceConfig] = Field(
+        default_factory=dict, description="'provider:model' -> price; unpriced cost is unknown"
+    )
+    max_attempts: int = Field(default=4, ge=1, le=10)
+    base_delay_s: float = Field(default=1.0, ge=0)
+    max_delay_s: float = Field(default=20.0, ge=0)
+    context_fraction: float = Field(
+        default=0.8, gt=0.1, le=0.95, description="Share of the context window for the prompt"
+    )
+
+
+class BudgetConfig(_Strict):
+    """Per-task limits. Enforced in code by the agent loop; nothing the model says changes them."""
+
+    max_tokens: int = Field(default=400_000, ge=1_000)
+    max_usd: float | None = Field(default=1.0, ge=0)
+    max_tool_calls: int = Field(default=60, ge=1)
+    max_seconds: int = Field(default=900, ge=10)
+    max_edit_attempts: int = Field(default=3, ge=1, le=10)
+
+
 class AgentConfig(_Strict):
     index: IndexConfig = Field(default_factory=IndexConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    budgets: BudgetConfig = Field(default_factory=BudgetConfig)
     model_cache_dir: Path = Field(
         default_factory=lambda: Path.home() / ".cache" / "code-agent" / "models",
         description="Where embedding model weights are cached (downloaded once).",

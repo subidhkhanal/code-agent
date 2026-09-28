@@ -93,3 +93,11 @@ def test_undo_refuses_when_user_edited_afterwards(repo: Path, tmp_path: Path, mo
     result = runner.invoke(app, ["undo", "-p", str(repo)])
     assert result.exit_code == 1 and "Undo refused" in result.output
     assert (repo / "auth/tokens.py").read_text() == "# my own rewrite\n"
+
+
+def test_models_without_api_key_fails_clearly(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("CODE_AGENT_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    result = runner.invoke(app, ["models"])
+    assert result.exit_code == 1
+    assert "GEMINI_API_KEY is not set" in result.output

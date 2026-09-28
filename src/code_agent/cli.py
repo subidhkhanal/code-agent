@@ -19,6 +19,8 @@ from code_agent.index.embeddings import Embedder, FastEmbedEmbedder
 from code_agent.index.indexer import Indexer, IndexStats
 from code_agent.index.store import IndexStore, open_index
 from code_agent.index.watcher import watch
+from code_agent.llm.factory import build_providers
+from code_agent.llm.types import ProviderError
 from code_agent.retrieval.search import Mode, Searcher
 from code_agent.workspace import Workspace
 
@@ -219,3 +221,41 @@ def undo(
     for file_path in result.already_original:
         console.print(f"[dim]unchanged[/] {file_path}")
     console.print(f"Undid change set {result.change_set_id[:12]}.")
+
+
+@app.command()
+def models() -> None:
+    """List models available from each configured provider and check the configured routes."""
+    cfg = load_config()
+    configured = {spec for specs in cfg.llm.routes.values() for spec in specs}
+    ok = True
+    for name, provider in build_providers(cfg.llm).items():
+        try:
+            available = sorted(provider.list_models(), key=lambda m: m.name)
+        except ProviderError as exc:
+            err.print(f"[red]{name}:[/] {exc}")
+            ok = False
+            continue
+        table = Table(title=f"{name} ({len(available)} models)", box=None, header_style="bold")
+        table.add_column("model")
+        table.add_column("context", justify="right")
+        table.add_column("max output", justify="right")
+        table.add_column("routed")
+        for m in available:
+            spec = f"{name}:{m.name}"
+            table.add_row(
+                m.name,
+                f"{m.input_token_limit:,}" if m.input_token_limit else "?",
+                f"{m.output_token_limit:,}" if m.output_token_limit else "?",
+                "yes" if spec in configured else "",
+            )
+        console.print(table)
+        names = {m.name for m in available}
+        for spec in sorted(s for s in configured if s.startswith(f"{name}:")):
+            if spec.partition(":")[2] not in names:
+                err.print(f"[red]configured route {spec} is not available[/]")
+                ok = False
+    if not cfg.llm.routes:
+        err.print("[yellow]No routes configured yet: set [llm.routes] in your config.[/]")
+    if not ok:
+        raise typer.Exit(1)
