@@ -5,8 +5,8 @@ A terminal coding agent for Python repositories, built around a local hybrid cod
 > **Status: work in progress (milestone 2 of 5).** Indexing, search, the agent loop, validated
 > edits and undo exist. The shadow workspace, command approvals, secret scanning, headless mode
 > and evals come in later milestones (see [PLAN.md](PLAN.md)). This README only describes what is
-> implemented and tested. The agent has so far been exercised only against a scripted fake LLM:
-> no run against a real model has been made yet.
+> implemented and tested. The test suite uses a scripted fake LLM; against a real model there has
+> been one smoke test so far (below), which is a sanity check, not an evaluation.
 
 ## What works today
 
@@ -54,6 +54,14 @@ Applying one edit (match + atomic write), from `benchmarks/bench_apply.py`, 50 r
 | 100 lines | 2.3 / 3.3 ms | 2.1 / 2.7 ms |
 | 500 lines | 2.4 / 3.2 ms | 3.0 / 3.7 ms |
 | 1000 lines | 2.7 / 4.4 ms | 3.9 / 4.9 ms |
+
+Real-model smoke test (one run, 2026-09-29): on the fixture repo in `tests/fixtures/sample_repo`,
+`agent chat -m "fix the bug where expired tokens are still accepted"` with `gemini-3.5-flash-lite`
+(query rewriting) and `gemini-3.8-flash` (edits) read the file and its tests, checked callers with
+`get_references`, and proposed a one-line fix that applied as an exact match. The fixture's
+failing test then passed, and `agent undo` restored the file byte-for-byte. Usage: 5 model calls,
+3 tool calls, 8,252 input + 179 output tokens, 21 s; under $0.007 at Google's published paid-tier
+prices. One run on a toy repo says nothing about success rates.
 
 Retrieval quality and task success rates have not been measured yet; that is milestone 4
 (SWE-bench Lite subset).
