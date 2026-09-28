@@ -9,11 +9,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from code_agent.agent.loop import AgentEvent, AgentLoop, TaskResult
+from code_agent.agent.loop import AgentEvent, AgentLoop, RetrievalDone, TaskResult
 from code_agent.agent.tasks import TaskStatus, TaskStore
 from code_agent.agent.tools import ToolContext, ToolRegistry
 from code_agent.config import AgentConfig
 from code_agent.context.assembly import ContextAssembler
+from code_agent.context.log import TaskLog
 from code_agent.edits.apply import ApplyPlan, Planner
 from code_agent.edits.changesets import ChangeSetStore
 from code_agent.index.embeddings import Embedder
@@ -50,6 +51,12 @@ class AgentSession:
         self.indexer = Indexer(workspace, self.conn, cfg, embedder)
         self.searcher = Searcher(workspace.index_path, workspace.repo_id, cfg.retrieval, embedder)
         self.gateway = gateway or build_gateway(cfg.llm)
+        self.log = TaskLog(workspace.ensure_state_dir())
+        previous = self.gateway.outbound_filter
+        # The log is the last filter before a request leaves, so it records exactly what is sent.
+        self.gateway.outbound_filter = (
+            self.log if previous is None else (lambda request: self.log(previous(request)))
+        )
         self.tasks = TaskStore(self.conn, workspace.repo_id)
         self.changes = ChangeSetStore(self.conn, workspace.root)
         self.sensitive = SensitivePathPolicy(cfg.index.extra_sensitive)
@@ -95,6 +102,13 @@ class AgentSession:
     ) -> tuple[str, TaskResult]:
         _, revision = self.workspace.git_revision()
         request_id = self.tasks.create(task, self.cfg.budgets, base_revision=revision)
+        self.log.start(request_id)
+
+        def on_event_logged(event: AgentEvent) -> None:
+            if isinstance(event, RetrievalDone):
+                self.log.retrieval(event.bundle)
+            on_event(event)
+
         budgets = self.token_budgets()
         ctx = ToolContext(
             self.workspace.root, self.sensitive, self.searcher, self.conn, self.workspace.repo_id
@@ -109,7 +123,7 @@ class AgentSession:
             context_budget_tokens=budgets.context,
             history_budget_tokens=budgets.prompt,
             max_output_tokens=budgets.output,
-            on_event=on_event,
+            on_event=on_event_logged,
         )  # fmt: skip
         result = loop.run(task, cancel)
         status = TaskStatus.WAITING_FOR_APPROVAL if result.plan else result.status

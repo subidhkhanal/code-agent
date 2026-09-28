@@ -204,3 +204,21 @@ def test_model_controlled_text_is_not_interpreted_as_markup(
     result = runner.invoke(app, ["chat", "-m", "x", "-p", str(repo)])
     assert result.exit_code == 0, result.output
     assert hostile in result.output  # printed literally in the [tool] line, not rendered
+
+
+def test_task_logs_record_retrieval_and_exact_requests(repo: Path, tmp_path: Path, monkeypatch):
+    import json
+
+    _fake_llm_config(tmp_path, monkeypatch, FIX_TURNS)
+    runner.invoke(app, ["chat", "-m", "fix expired tokens", "-p", str(repo)], input="n\n")
+    (log_dir,) = (repo / ".agent" / "logs").iterdir()
+    retrieval = json.loads((log_dir / "retrieval.json").read_text(encoding="utf-8"))
+    assert retrieval["queries"][0] == "fix expired tokens"
+    assert any(i["file_path"] == "auth/tokens.py" for i in retrieval["items"])
+    assert "<retrieved_code>" in (log_dir / "context.md").read_text(encoding="utf-8")
+    requests = [
+        json.loads(line)
+        for line in (log_dir / "requests.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [r["model"] for r in requests] == ["fake-cheap", "fake-strong", "fake-strong"]
+    assert any(m["role"] == "tool" for m in requests[-1]["messages"])
