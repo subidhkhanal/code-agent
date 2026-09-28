@@ -341,6 +341,16 @@ class IndexStore:
         c.commit()
         return repairs
 
+    def clear(self) -> None:
+        """Drop all index data (chunks, BM25, vectors) but keep tasks, audit log and undo
+        history, which live in the same database."""
+        with self.conn:
+            self.conn.execute("DELETE FROM chunks_fts")
+            self.conn.execute("DELETE FROM file_chunks")
+            self.conn.execute("DELETE FROM indexed_files")
+            self.conn.execute(f"DROP TABLE IF EXISTS {VEC_TABLE}")
+            self.conn.execute("DELETE FROM meta WHERE key IN ('embedding_model', 'embedding_dim')")
+
     # -- reporting ----------------------------------------------------------------------------
 
     def counts(self) -> dict[str, int]:
