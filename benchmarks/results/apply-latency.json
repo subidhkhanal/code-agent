@@ -1,0 +1,96 @@
+{
+  "machine": "Windows AMD64, Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "python": "3.12.10",
+  "results": [
+    {
+      "lines": 100,
+      "tier": "exact",
+      "runs": 50,
+      "p50_ms": 2.33,
+      "p95_ms": 3.25,
+      "matched_as": [
+        "exact"
+      ]
+    },
+    {
+      "lines": 100,
+      "tier": "whitespace",
+      "runs": 50,
+      "p50_ms": 2.07,
+      "p95_ms": 2.59,
+      "matched_as": [
+        "whitespace"
+      ]
+    },
+    {
+      "lines": 100,
+      "tier": "fuzzy",
+      "runs": 50,
+      "p50_ms": 2.12,
+      "p95_ms": 2.69,
+      "matched_as": [
+        "fuzzy"
+      ]
+    },
+    {
+      "lines": 500,
+      "tier": "exact",
+      "runs": 50,
+      "p50_ms": 2.43,
+      "p95_ms": 3.21,
+      "matched_as": [
+        "exact"
+      ]
+    },
+    {
+      "lines": 500,
+      "tier": "whitespace",
+      "runs": 50,
+      "p50_ms": 2.32,
+      "p95_ms": 3.28,
+      "matched_as": [
+        "whitespace"
+      ]
+    },
+    {
+      "lines": 500,
+      "tier": "fuzzy",
+      "runs": 50,
+      "p50_ms": 3.03,
+      "p95_ms": 3.69,
+      "matched_as": [
+        "fuzzy"
+      ]
+    },
+    {
+      "lines": 1000,
+      "tier": "exact",
+      "runs": 50,
+      "p50_ms": 2.71,
+      "p95_ms": 4.42,
+      "matched_as": [
+        "exact"
+      ]
+    },
+    {
+      "lines": 1000,
+      "tier": "whitespace",
+      "runs": 50,
+      "p50_ms": 2.79,
+      "p95_ms": 3.45,
+      "matched_as": [
+        "whitespace"
+      ]
+    },
+    {
+      "lines": 1000,
+      "tier": "fuzzy",
+      "runs": 50,
+      "p50_ms": 3.93,
+      "p95_ms": 4.9,
+      "matched_as": [
+        "fuzzy"
+      ]
+    }
+  ]
+}
