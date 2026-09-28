@@ -8,6 +8,7 @@ import uuid
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -80,6 +81,18 @@ class FakeProvider:
 
     def add(self, *items: FakeScriptItem) -> None:
         self._queue.extend(items)
+
+    @classmethod
+    def from_file(cls, path: Path, *, name: str = "fake") -> FakeProvider:
+        """Load a script: a JSON list of {"text": str, "tool_calls": [{"name", "arguments"}]}."""
+        turns = []
+        for i, raw in enumerate(json.loads(Path(path).read_text(encoding="utf-8"))):
+            calls = tuple(
+                ToolCall(f"call-{i}-{j}", c["name"], dict(c.get("arguments", {})))
+                for j, c in enumerate(raw.get("tool_calls", []))
+            )
+            turns.append(FakeTurn(raw.get("text", ""), calls))
+        return cls(turns, name=name)
 
     def stream(self, request: Request, cancel: CancelToken) -> Iterator[StreamEvent]:
         self.requests.append(request)

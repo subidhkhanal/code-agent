@@ -62,15 +62,24 @@ class RetrievalConfig(_Strict):
     top_k: int = Field(default=10, ge=1, le=200)
     candidates_per_retriever: int = Field(default=50, ge=1, le=1000)
     rrf_k: int = Field(default=60, ge=1, description="RRF damping constant (60 is the usual value)")
+    max_context_tokens: int = Field(
+        default=24_000,
+        ge=1_000,
+        description="Cap on retrieved code per request. The real limit is min(this, share of the "
+        "model window): with ~1M-token windows, cost binds long before the window does.",
+    )
 
 
 class ProviderConfig(_Strict):
-    kind: Literal["gemini"] = "gemini"
+    kind: Literal["gemini", "fake"] = "gemini"
     api_key_env: str = Field(
         default="GEMINI_API_KEY", description="Name of the env var holding the key (not the key)"
     )
     base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     timeout_s: float = Field(default=120.0, gt=0)
+    script: Path | None = Field(
+        default=None, description="kind='fake' only: JSON file of scripted turns (demos, CI)"
+    )
 
 
 class PriceConfig(_Strict):
@@ -99,6 +108,10 @@ class LLMConfig(_Strict):
     context_fraction: float = Field(
         default=0.8, gt=0.1, le=0.95, description="Share of the context window for the prompt"
     )
+    max_prompt_tokens: int = Field(
+        default=64_000, ge=4_000, description="Cap on the whole prompt, incl. tool results"
+    )
+    max_output_tokens: int = Field(default=8_192, ge=256)
 
 
 class BudgetConfig(_Strict):
