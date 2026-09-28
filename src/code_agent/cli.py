@@ -36,6 +36,7 @@ from code_agent.config import AgentConfig, load_config
 from code_agent.edits.atomic import WriteConflictError
 from code_agent.edits.changesets import ChangeSetStore, UndoConflictError
 from code_agent.edits.diff import diff_stats, file_diff, plan_diff
+from code_agent.headless import HeadlessRefusedError, run_headless
 from code_agent.index.embeddings import Embedder, FastEmbedEmbedder
 from code_agent.index.indexer import Indexer, IndexStats
 from code_agent.index.store import IndexStore, open_index
@@ -521,3 +522,42 @@ def audit(
             highlight=False,
         )
         console.print(f"          {escape(e.redacted_args[:300])}", style="dim", highlight=False)
+
+
+@app.command()
+def run(
+    task: Annotated[str, typer.Option("--task", help="What to do, in plain language.")],
+    headless: Annotated[bool, typer.Option("--headless", help="Run without a human.")] = False,
+    auto_approve: Annotated[
+        bool, typer.Option("--auto-approve", help="Approve every command (containers only).")
+    ] = False,
+    out: Annotated[
+        Path, typer.Option("--out", help="Where to write report.json and patch.diff.")
+    ] = Path("agent-out"),
+    allow_outside_container: Annotated[
+        bool, typer.Option("--allow-outside-container", hidden=True)
+    ] = False,
+    path: PathOpt = Path("."),
+) -> None:
+    """Autonomous mode for containers: run one task, apply it, write a report and a diff."""
+    if not (headless and auto_approve):
+        err.print("`agent run` needs --headless --auto-approve; use `agent chat` interactively.")
+        raise typer.Exit(2)
+    if allow_outside_container:
+        err.print("[yellow]WARNING: running auto-approve mode outside a container.[/]")
+    cfg = load_config()
+    ws = Workspace.discover(path)
+    try:
+        report = run_headless(
+            ws, cfg, task, out_dir=out, embedder=_embedder(cfg),
+            allow_outside_container=allow_outside_container,
+        )  # fmt: skip
+    except HeadlessRefusedError as exc:
+        err.print(f"[red]Refused:[/] {escape(str(exc))}")
+        raise typer.Exit(3) from exc
+    console.print(
+        f"{report.status.lower()} | applied={report.applied} | "
+        f"{len(report.files_changed)} file(s) | {report.input_tokens:,}+{report.output_tokens:,} "
+        f"tokens | {report.seconds}s | report: {escape(str(out / 'report.json'))}"
+    )
+    raise typer.Exit(0 if report.status == "SUCCEEDED" else 1)
