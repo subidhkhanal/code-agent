@@ -275,3 +275,17 @@ def test_permissions_are_preserved(ws: Path, store: ChangeSetStore):
     script.chmod(0o755)
     store.apply(plan(ws, [block("run.py", "print('hi')\n", "print('hello')\n")]))
     assert stat.S_IMODE(script.stat().st_mode) == 0o755
+
+
+def test_copied_line_number_gutter_is_stripped(ws: Path):
+    search = "    7 |     return token.expires_at > 0\n"
+    replace = "    7 |     return token.expires_at > time.time()\n"
+    p = plan(ws, [block("auth/tokens.py", search, replace)])
+    assert p.ok, p.feedback()
+    assert b"    return token.expires_at > time.time()\n" in p.changes["auth/tokens.py"].after
+
+
+def test_partial_gutter_is_not_stripped(ws: Path):
+    search = "    7 |     return token.expires_at > 0\n    return x\n"
+    p = plan(ws, [block("auth/tokens.py", search, "pass\n")])
+    assert not p.ok

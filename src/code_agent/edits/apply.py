@@ -167,6 +167,18 @@ def _block_lines(text: str) -> list[str]:
     return lines
 
 
+_GUTTER = re.compile(r"^ *\d+ \|(?: |$)")
+
+
+def _strip_gutter(lines: list[str]) -> list[str]:
+    """Remove a `  12 | ` line-number gutter (the read_file display format) if *every* line has
+    one. Models sometimes copy it into SEARCH; stripping it saves a retry. Partial gutters are
+    left alone, since that could be real code."""
+    if lines and all(_GUTTER.match(line) for line in lines):
+        return [_GUTTER.sub("", line, count=1) for line in lines]
+    return lines
+
+
 def _excerpt(lines: list[str], start: int, count: int) -> str:
     shown = lines[start : start + min(count, MAX_FEEDBACK_LINES)]
     body = "\n".join(f"{start + i + 1:>5} | {line}" for i, line in enumerate(shown))
@@ -275,7 +287,7 @@ class Planner:
         plan.changes[rel] = FileChange(rel, real, None, doc.encode(), None)
 
     def _apply_block(self, doc: _Document, block: EditBlock) -> BlockResult:
-        needle = _block_lines(block.search)
+        needle = _strip_gutter(_block_lines(block.search))
         if not any(line.strip() for line in needle):
             return BlockResult(block, ApplyErrorCode.EMPTY_SEARCH,
                                message="SEARCH is empty but the file already exists; quote the "
@@ -297,7 +309,7 @@ class Planner:
             return BlockResult(block, ApplyErrorCode.NO_MATCH, message=message)
 
         assert isinstance(outcome, Match)
-        replacement = outcome.reindent(_block_lines(block.replace))
+        replacement = outcome.reindent(_strip_gutter(_block_lines(block.replace)))
         doc.replace(outcome.start, outcome.end, replacement)
         return BlockResult(
             block, kind=outcome.kind, similarity=outcome.similarity,
