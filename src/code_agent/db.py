@@ -151,7 +151,9 @@ def connect(path: Path | str, *, read_only: bool = False) -> sqlite3.Connection:
     if read_only:
         conn = sqlite3.connect(f"file:{Path(path).as_posix()}?mode=ro", uri=True)
     else:
-        conn = sqlite3.connect(path)
+        # The chat session runs a task on a worker thread (so Ctrl+C can cancel it) while the
+        # main thread only waits; access is strictly sequential, so cross-thread use is safe.
+        conn = sqlite3.connect(path, check_same_thread=False)
     try:
         conn.row_factory = sqlite3.Row
         conn.enable_load_extension(True)
