@@ -14,6 +14,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 from code_agent.config import AgentConfig, load_config
+from code_agent.edits.changesets import ChangeSetStore, UndoConflictError
 from code_agent.index.embeddings import Embedder, FastEmbedEmbedder
 from code_agent.index.indexer import Indexer, IndexStats
 from code_agent.index.store import IndexStore, open_index
@@ -80,15 +81,16 @@ def index(
     no_embed: Annotated[
         bool, typer.Option("--no-embed", help="Skip embeddings (BM25 + symbol search only).")
     ] = False,
-    rebuild: Annotated[bool, typer.Option("--rebuild", help="Discard the index first.")] = False,
+    rebuild: Annotated[
+        bool, typer.Option("--rebuild", help="Discard the index first (keeps undo history).")
+    ] = False,
 ) -> None:
     """Build or incrementally refresh the index for the current repository."""
     cfg = load_config()
     ws = Workspace.discover(path)
-    if rebuild:
-        for suffix in ("", "-wal", "-shm"):
-            Path(str(ws.index_path) + suffix).unlink(missing_ok=True)
     conn, repairs = open_index(ws)
+    if rebuild:
+        IndexStore(conn, ws.repo_id).clear()
     indexer = Indexer(ws, conn, cfg, None if no_embed else _embedder(cfg))
 
     with Progress(
@@ -187,3 +189,33 @@ def search(
             lexer = "python" if hit.file_path.endswith((".py", ".pyi")) else "text"
             console.rule(f"{hit.file_path}:{hit.start_line}")
             console.print(Syntax(hit.content, lexer, line_numbers=True, start_line=hit.start_line))
+
+
+@app.command()
+def undo(
+    change_set: Annotated[
+        str | None, typer.Option("--id", help="Change set to undo (default: the latest).")
+    ] = None,
+    path: PathOpt = Path("."),
+) -> None:
+    """Revert the last applied change set (works offline, no git needed)."""
+    ws = Workspace.discover(path)
+    if not ws.index_path.exists():
+        console.print("Nothing to undo.")
+        raise typer.Exit(1)
+    conn, _ = open_index(ws)
+    try:
+        result = ChangeSetStore(conn, ws.root).undo(change_set)
+    except LookupError as exc:
+        console.print(f"Nothing to undo ({exc}).")
+        raise typer.Exit(1) from exc
+    except UndoConflictError as exc:
+        err.print(f"[red]Undo refused:[/] {exc}")
+        raise typer.Exit(1) from exc
+    finally:
+        conn.close()
+    for file_path in result.restored:
+        console.print(f"[green]restored[/] {file_path}")
+    for file_path in result.already_original:
+        console.print(f"[dim]unchanged[/] {file_path}")
+    console.print(f"Undid change set {result.change_set_id[:12]}.")
