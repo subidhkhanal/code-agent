@@ -111,6 +111,23 @@ class ApplyPlan:
                            for r in self.errors)  # fmt: skip
 
 
+def compose(first: ApplyPlan | None, second: ApplyPlan) -> ApplyPlan:
+    """Chain two plans where `second` was made on top of `first` (an auto-fix round). The result
+    goes from `first`'s original content straight to `second`'s final content."""
+    if first is None:
+        return second
+    changes = dict(first.changes)
+    for rel, change in second.changes.items():
+        earlier = changes.get(rel)
+        if earlier is None:
+            changes[rel] = change
+        else:
+            changes[rel] = FileChange(rel, change.abs_path, earlier.before, change.after,
+                                      earlier.mode)  # fmt: skip
+    changes = {rel: c for rel, c in changes.items() if c.before != c.after}
+    return ApplyPlan(results=[*first.results, *second.results], changes=changes)
+
+
 # -- text model ---------------------------------------------------------------------------------
 
 
@@ -202,8 +219,18 @@ class Planner:
         self.sensitive = sensitive or SensitivePathPolicy()
         self.fuzzy_threshold = fuzzy_threshold
 
-    def plan(self, blocks: Iterable[EditBlock], base_hashes: Mapping[str, str]) -> ApplyPlan:
-        """`base_hashes`: workspace-relative path -> sha256 of the bytes the model was shown."""
+    def plan(
+        self,
+        blocks: Iterable[EditBlock],
+        base_hashes: Mapping[str, str],
+        overlay: Mapping[str, bytes] | None = None,
+    ) -> ApplyPlan:
+        """`base_hashes`: workspace-relative path -> sha256 of the bytes the model was shown.
+
+        `overlay`: virtual file contents that take precedence over disk. During an auto-fix
+        round it holds the model's previous (validated-but-failing) edits, so new blocks apply
+        on top of them."""
+        overlay = overlay or {}
         plan = ApplyPlan()
         by_file: dict[str, list[EditBlock]] = {}
         denied: list[BlockResult] = []
@@ -226,7 +253,9 @@ class Planner:
 
         plan.results.extend(denied)
         for rel, file_blocks in by_file.items():
-            self._plan_file(plan, rel, resolved[rel], file_blocks, base_hashes.get(rel))
+            self._plan_file(
+                plan, rel, resolved[rel], file_blocks, base_hashes.get(rel), overlay.get(rel)
+            )
         plan.results.sort(key=lambda r: r.block.index)
         if not plan.ok:
             plan.changes.clear()  # all-or-nothing: never hand out a partial change set
@@ -239,14 +268,15 @@ class Planner:
         real: Path,
         blocks: list[EditBlock],
         base_hash: str | None,
+        virtual: bytes | None = None,
     ) -> None:
         def reject_all(code: ApplyErrorCode, message: str) -> None:
             plan.results.extend(BlockResult(b, code, message=message) for b in blocks)
 
-        if not real.exists():
+        if virtual is None and not real.exists():
             self._plan_new_file(plan, rel, real, blocks)
             return
-        before = real.read_bytes()
+        before = virtual if virtual is not None else real.read_bytes()
         if base_hash is None:
             reject_all(ApplyErrorCode.NOT_READ,
                        f"{rel} was not read in this task; read it before editing it")  # fmt: skip
@@ -266,7 +296,7 @@ class Planner:
             plan.results.append(self._apply_block(doc, block))
         after = doc.encode()
         if after != before:
-            mode = stat.S_IMODE(real.stat().st_mode)
+            mode = stat.S_IMODE(real.stat().st_mode) if real.exists() else None
             plan.changes[rel] = FileChange(rel, real, before, after, mode)
 
     def _plan_new_file(

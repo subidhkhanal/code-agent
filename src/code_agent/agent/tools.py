@@ -65,6 +65,9 @@ class ToolContext:
     approvals: ApprovalManager | None = None
     cancel: CancelToken = field(default_factory=CancelToken)
     call_id: str = ""  # id of the tool call currently executing (set by the registry)
+    # Virtual contents of files the model edited in an earlier auto-fix round. read_file shows
+    # these, so the model sees its own pending edits rather than the unedited disk file.
+    overlay: dict[str, bytes] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -180,9 +183,12 @@ def gutter(lines: list[str], first_line: int) -> str:
 
 def read_file(ctx: ToolContext, args: ReadFileArgs) -> str:
     real, rel = _safe_path(ctx, args.path)
-    if not real.is_file():
+    if rel in ctx.overlay:
+        data = ctx.overlay[rel]
+    elif real.is_file():
+        data = real.read_bytes()
+    else:
         raise ToolError(f"{rel} does not exist or is not a file")
-    data = real.read_bytes()
     text = read_source_text(data)
     if text is None:
         raise ToolError(f"{rel} is binary or not UTF-8")
