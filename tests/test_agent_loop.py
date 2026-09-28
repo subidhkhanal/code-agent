@@ -248,4 +248,4 @@ def test_injected_text_in_tool_output_cannot_grant_tools(indexed: IndexedRepo, i
     result = h.run("summarize notes.md")
     assert result.status is TaskStatus.SUCCEEDED
     tool_results = [m.content for m in h.fake.requests[-1].messages if m.role == "tool"]
-    assert "unknown tool 'run_terminal_command'" in tool_results[-1]
+    assert "tool 'run_terminal_command' is not permitted" in tool_results[-1]

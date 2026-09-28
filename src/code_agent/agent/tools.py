@@ -14,6 +14,7 @@ uses those hashes to reject edits against stale content (ADR 0005).
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from collections.abc import Callable
@@ -25,16 +26,20 @@ from typing import Any
 import jedi
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from code_agent.hashing import sha256_bytes
+from code_agent.hashing import sha256_bytes, sha256_text
 from code_agent.index.files import read_source_text
-from code_agent.llm.types import ToolCall, ToolSpec
+from code_agent.llm.types import CancelToken, ToolCall, ToolSpec
 from code_agent.retrieval.search import Searcher
+from code_agent.security.approvals import ApprovalManager
+from code_agent.security.audit import AuditLog
+from code_agent.security.commands import classify
 from code_agent.security.paths import (
     PathOutsideWorkspaceError,
     SensitivePathPolicy,
     resolve_in_workspace,
     to_workspace_relpath,
 )
+from code_agent.security.runner import run_command
 
 MAX_OUTPUT_CHARS = 16_000
 MAX_READ_LINES = 400
@@ -54,6 +59,21 @@ class ToolContext:
     conn: sqlite3.Connection
     repo_id: str
     base_hashes: dict[str, str] = field(default_factory=dict)
+    # Set for real tasks; command execution and auditing are disabled without them.
+    request_id: str | None = None
+    audit: AuditLog | None = None
+    approvals: ApprovalManager | None = None
+    cancel: CancelToken = field(default_factory=CancelToken)
+    call_id: str = ""  # id of the tool call currently executing (set by the registry)
+
+
+@dataclass(frozen=True)
+class ToolOutput:
+    """A tool result plus the approval/idempotency metadata the audit log needs."""
+
+    content: str
+    approval_id: str | None = None
+    idempotency_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +107,12 @@ class SearchArgs(_Args):
     k: int = Field(default=8, ge=1, le=20, description="Number of results")
 
 
+class CommandArgs(_Args):
+    command: str = Field(min_length=1, max_length=2_000, description="One command, no shell")
+    cwd: str = Field(default=".", max_length=500, description="Workspace-relative directory")
+    timeout_s: int = Field(default=120, ge=1, le=900)
+
+
 class SymbolArgs(_Args):
     symbol: str = Field(
         min_length=1,
@@ -102,7 +128,7 @@ class Tool:
     description: str
     args: type[_Args]
     capability: Capability
-    run: Callable[[ToolContext, Any], str]
+    run: Callable[[ToolContext, Any], str | ToolOutput]
 
     @property
     def spec(self) -> ToolSpec:
@@ -111,6 +137,10 @@ class Tool:
 
 class ToolError(Exception):
     """Raised inside a tool for an expected failure; shown to the model as an error result."""
+
+
+class ToolDeniedError(ToolError):
+    """The user (or policy) refused the action."""
 
 
 def _truncate(text: str, limit: int = MAX_OUTPUT_CHARS) -> tuple[str, bool]:
@@ -250,6 +280,39 @@ def get_references(ctx: ToolContext, args: SymbolArgs) -> str:
     return f"{len(out)} locations for {args.symbol}{note}:\n" + "\n".join(out)
 
 
+def _shell_argv(command: str) -> list[str]:
+    """Only used for commands the user explicitly approved *as shell commands*."""
+    if os.name == "nt":
+        return ["cmd", "/d", "/s", "/c", command]
+    return ["/bin/sh", "-c", command]
+
+
+def run_terminal_command(ctx: ToolContext, args: CommandArgs) -> ToolOutput:
+    if ctx.approvals is None or ctx.request_id is None:
+        raise ToolError("running commands is not enabled in this session")
+    c = classify(args.command, root=ctx.root, cwd=args.cwd, sensitive=ctx.sensitive)
+    # Same task + same tool call + same command = same key. If the loop retries a call that
+    # already completed (e.g. after a crash), the command is not run a second time.
+    key = sha256_text("\x00".join([ctx.request_id, ctx.call_id, args.command, c.cwd]))
+    if ctx.audit is not None and ctx.audit.completed(key) is not None:
+        # The key stays with the execution that owns it; the replay is audited without it.
+        return ToolOutput("this exact command already ran for this tool call; not run again")
+    approval = ctx.approvals.authorize(ctx.request_id, c)
+    if approval is None:
+        raise ToolDeniedError(f"the user denied running `{args.command}` ({c.summary})")
+    reason = ctx.approvals.recheck(approval, ctx.request_id, ctx.cancel)
+    if reason is not None:
+        raise ToolDeniedError(f"`{args.command}` was not run: {reason}")
+    argv = _shell_argv(args.command) if c.needs_shell else list(c.argv)
+    cwd = resolve_in_workspace(ctx.root, args.cwd)
+    try:
+        result = run_command(argv, cwd, timeout_s=args.timeout_s, cancel=ctx.cancel)
+    except OSError as exc:
+        # e.g. a shell built-in such as Windows `dir`/`echo`, which has no executable to start
+        raise ToolError(f"could not start `{argv[0]}`: {exc.strerror or exc}") from exc
+    return ToolOutput(f"[{c.summary}]\n{result.render()}", approval.approval_id, key)
+
+
 TOOLS: tuple[Tool, ...] = (
     Tool("read_file", "Read a workspace file (with line numbers in a gutter). Always read a file "
          "before editing it.", ReadFileArgs, Capability.READ, read_file),
@@ -259,6 +322,10 @@ TOOLS: tuple[Tool, ...] = (
          SymbolArgs, Capability.READ, get_definition),
     Tool("get_references", "List where a function, class or method is used, across the project.",
          SymbolArgs, Capability.READ, get_references),
+    Tool("run_terminal_command", "Run one command in the workspace (no shell: no pipes, "
+         "redirects or chaining). Read-only and test/lint commands may be pre-approved; "
+         "anything else asks the user every time.", CommandArgs, Capability.EXECUTE,
+         run_terminal_command),
 )  # fmt: skip
 
 
@@ -278,21 +345,44 @@ class ToolRegistry:
         return [t.spec for t in self._tools.values() if t.capability in self._allowed]
 
     def execute(self, call: ToolCall) -> ToolResult:
+        """Validate, run and audit one tool call. Every outcome is audited, including rejects."""
+        output = ToolOutput("")
+        status = "ok"
         tool = self._tools.get(call.name)
         if tool is None:
-            return ToolResult(call.name, f"unknown tool {call.name!r}", is_error=True)
-        if tool.capability not in self._allowed:
-            return ToolResult(call.name, f"tool {call.name!r} is not permitted", is_error=True)
-        try:
-            args = tool.args.model_validate(call.arguments)
-        except ValidationError as exc:
-            problems = "; ".join(
-                f"{'.'.join(map(str, e['loc'])) or 'arguments'}: {e['msg']}" for e in exc.errors()
-            )
-            return ToolResult(call.name, f"invalid arguments: {problems}", is_error=True)
-        try:
-            content = tool.run(self.ctx, args)
-        except ToolError as exc:
-            return ToolResult(call.name, str(exc), is_error=True)
-        text, truncated = _truncate(content)
-        return ToolResult(call.name, text, truncated=truncated)
+            result = ToolResult(call.name, f"unknown tool {call.name!r}", is_error=True)
+            status = "unknown_tool"
+        elif tool.capability not in self._allowed:
+            result = ToolResult(call.name, f"tool {call.name!r} is not permitted", is_error=True)
+            status = "not_permitted"
+        else:
+            try:
+                args = tool.args.model_validate(call.arguments)
+            except ValidationError as exc:
+                problems = "; ".join(
+                    f"{'.'.join(map(str, e['loc'])) or 'arguments'}: {e['msg']}"
+                    for e in exc.errors()
+                )
+                result = ToolResult(call.name, f"invalid arguments: {problems}", is_error=True)
+                status = "invalid_arguments"
+            else:
+                self.ctx.call_id = call.id
+                try:
+                    raw = tool.run(self.ctx, args)
+                    output = raw if isinstance(raw, ToolOutput) else ToolOutput(raw)
+                    text, truncated = _truncate(output.content)
+                    result = ToolResult(call.name, text, truncated=truncated)
+                except ToolDeniedError as exc:
+                    result = ToolResult(call.name, str(exc), is_error=True)
+                    status = "denied"
+                except ToolError as exc:
+                    result = ToolResult(call.name, str(exc), is_error=True)
+                    status = "error"
+        if self.ctx.audit is not None:
+            self.ctx.audit.record(
+                tool_name=call.name, actor="model", args=call.arguments,
+                request_id=self.ctx.request_id, tool_call_id=call.id,
+                approval_id=output.approval_id, output=result.content, status=status,
+                idempotency_key=output.idempotency_key if status == "ok" else None,
+            )  # fmt: skip
+        return result
