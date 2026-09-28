@@ -72,7 +72,12 @@ Real-model smoke test (one run, 2026-09-29): on the fixture repo in `tests/fixtu
 `get_references`, and proposed a one-line fix that applied as an exact match. The fixture's
 failing test then passed, and `agent undo` restored the file byte-for-byte. Usage: 5 model calls,
 3 tool calls, 8,252 input + 179 output tokens, 21 s; under $0.007 at Google's published paid-tier
-prices. One run on a toy repo says nothing about success rates.
+prices. A second run (2026-09-29) went through the full M3 pipeline: the model ran `pytest`
+itself (approved for the session), its fix passed shadow validation
+(`ruff ok | pyright ok | pytest ok | 1 failing test(s) now pass`) and was applied after review;
+9,246 input + 179 output tokens, 19 s. That run's first attempt also exposed a real bug (a bare
+`pytest` was not on PATH), fixed in `b95e26b`. Two runs on a toy repo say nothing about success
+rates.
 
 Security suite (`tests/test_security_suite.py`): a scripted, fully compromised model obeys
 every instruction planted in `tests/fixtures/injection_repo` (`curl | sh`, read `.env`, read and
