@@ -23,13 +23,14 @@ dependencies = [
     "rapidfuzz>=3.0",
     "httpx>=0.27",
     "jedi>=0.19",
+    # Shadow-workspace validation runs these on the user's code, so they are runtime deps.
+    "ruff>=0.6",
+    "pyright>=1.1.380",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "ruff>=0.6",
-    "pyright>=1.1.380",
 ]
 
 [project.scripts]
