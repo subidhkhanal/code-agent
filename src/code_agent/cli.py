@@ -72,9 +72,9 @@ def _embedder(cfg: AgentConfig) -> Embedder:
 
 def _print_stats(ws: Workspace, stats: IndexStats, counts: dict[str, int]) -> None:
     for note in stats.repairs:
-        err.print(f"[yellow]repair:[/] {note}")
+        err.print(f"[yellow]repair:[/] {escape(note)}")
     for error in stats.errors:
-        err.print(f"[red]error:[/] {error}")
+        err.print(f"[red]error:[/] {escape(error)}")
     console.print(
         f"[bold]{ws.root}[/]  {stats.files_seen} files | "
         f"[green]+{stats.added}[/] [cyan]~{stats.updated}[/] [red]-{stats.removed}[/] "
@@ -184,7 +184,7 @@ def search(
         return
 
     for note in result.notes:
-        err.print(f"[yellow]{note}[/]")
+        err.print(f"[yellow]{escape(note)}[/]")
     if not result.hits:
         console.print("No results.")
         return
@@ -228,17 +228,17 @@ def undo(
     try:
         result = ChangeSetStore(conn, ws.root).undo(change_set)
     except LookupError as exc:
-        console.print(f"Nothing to undo ({exc}).")
+        console.print(f"Nothing to undo ({escape(str(exc))}).")
         raise typer.Exit(1) from exc
     except UndoConflictError as exc:
-        err.print(f"[red]Undo refused:[/] {exc}")
+        err.print(f"[red]Undo refused:[/] {escape(str(exc))}")
         raise typer.Exit(1) from exc
     finally:
         conn.close()
     for file_path in result.restored:
-        console.print(f"[green]restored[/] {file_path}")
+        console.print(f"[green]restored[/] {escape(file_path)}")
     for file_path in result.already_original:
-        console.print(f"[dim]unchanged[/] {file_path}")
+        console.print(f"[dim]unchanged[/] {escape(file_path)}")
     console.print(f"Undid change set {result.change_set_id[:12]}.")
 
 
@@ -252,7 +252,7 @@ def models() -> None:
         try:
             available = sorted(provider.list_models(), key=lambda m: m.name)
         except ProviderError as exc:
-            err.print(f"[red]{name}:[/] {exc}")
+            err.print(f"[red]{escape(name)}:[/] {escape(str(exc))}")
             ok = False
             continue
         table = Table(title=f"{name} ({len(available)} models)", box=None, header_style="bold")
@@ -272,10 +272,12 @@ def models() -> None:
         names = {m.name for m in available}
         for spec in sorted(s for s in configured if s.startswith(f"{name}:")):
             if spec.partition(":")[2] not in names:
-                err.print(f"[red]configured route {spec} is not available[/]")
+                err.print(f"[red]configured route {escape(spec)} is not available[/]")
                 ok = False
     if not cfg.llm.routes:
-        err.print("[yellow]No routes configured yet: set [llm.routes] in your config.[/]")
+        err.print(
+            f"[yellow]No routes configured yet: set {escape('[llm.routes]')} in your config.[/]"
+        )
     if not ok:
         raise typer.Exit(1)
 
@@ -351,7 +353,7 @@ def _handle_task(session: AgentSession, task: str) -> TaskResult:
     console.print()
     if result.plan is None:
         style = "green" if result.status is TaskStatus.SUCCEEDED else "yellow"
-        console.print(f"[{style}]{result.message}[/]")
+        console.print(f"[{style}]{escape(result.message)}[/]")
     else:
         added, removed = diff_stats(result.plan)
         console.rule(f"diff: {len(result.plan.changes)} file(s), +{added} -{removed}")
@@ -360,7 +362,9 @@ def _handle_task(session: AgentSession, task: str) -> TaskResult:
             try:
                 change_set = session.apply(request_id, result)
             except WriteConflictError as exc:
-                err.print(f"[red]Not applied:[/] {exc}. Nothing was written; ask again.")
+                err.print(
+                    f"[red]Not applied:[/] {escape(str(exc))}. Nothing was written; ask again."
+                )
             else:
                 console.print(f"[green]Applied[/] (change set {change_set[:12]}). "
                               "Revert with `agent undo`.")  # fmt: skip
@@ -385,7 +389,7 @@ def chat(
     try:
         problem = session.check_generation()
         if problem:
-            err.print(f"[yellow]Generation unavailable:[/] {problem}")
+            err.print(f"[yellow]Generation unavailable:[/] {escape(problem)}")
             err.print("`agent index`, `agent search` and `agent undo` still work.")
             raise typer.Exit(1)
         stats = session.refresh_index()
@@ -401,7 +405,9 @@ def chat(
         from prompt_toolkit.history import FileHistory
 
         prompt = PromptSession(history=FileHistory(str(ws.ensure_state_dir() / "chat_history")))
-        console.print(f"[bold]{ws.root}[/]  (Ctrl+C cancels a running task, Ctrl+D exits)")
+        console.print(
+            f"[bold]{escape(str(ws.root))}[/]  (Ctrl+C cancels a running task, Ctrl+D exits)"
+        )
         while True:
             try:
                 task = prompt.prompt("> ").strip()
