@@ -51,6 +51,19 @@ path/to/file.py
 - **Retrieval produces quotable text.** Chunks are verbatim slices of the file (ADR 0003), so the
   model can copy lines it was shown.
 
+## Edits travel in the reply text, not in a `propose_edits` tool call
+
+PLAN.md lists `propose_edits(blocks)` among the tools. It is implemented as the SEARCH/REPLACE
+channel in the model's *streamed reply text*, not as a JSON function call:
+
+- Function-call arguments arrive only when the call is complete, so they can't be parsed while
+  streaming. The plan's requirement to parse blocks "as tokens arrive" rules them out.
+- Putting code inside a JSON string means escaping every quote, backslash, and newline. That
+  adds output tokens, and escaping mistakes silently change the code.
+
+Everything else about the edit step is unchanged: blocks go through the same parser, the same
+Fast Apply checks, and the same retry budget.
+
 ## Consequences
 
 - A SEARCH or REPLACE body containing a line that is exactly `=======` (e.g. RST headings, merge
