@@ -120,6 +120,38 @@ def python_signature(outer: Node, defn: Node, lines: list[str]) -> str:
     return "\n".join([*header, f"{indent}    ..."])
 
 
+def signature_only(content: str) -> str | None:
+    """Collapse a function/method/class chunk to decorators + signature + docstring + `...`.
+
+    Used when the context budget is tight: the model still learns what the code offers and can
+    `read_file` the body if it needs it. Returns None if `content` has no definition.
+    """
+    lines = _split_lines(normalize_newlines(content))
+    indent = min((len(ln) - len(ln.lstrip()) for ln in lines if ln.strip()), default=0)
+    dedented = [ln[indent:] for ln in lines]
+    source = "\n".join(dedented).encode("utf-8")
+    tree = _parser().parse(source)
+    for node in tree.root_node.named_children:
+        defn = _definition(node)
+        if defn.type not in ("function_definition", "class_definition"):
+            continue
+        signature = python_signature(node, defn, dedented).split("\n")
+        body = defn.child_by_field_name("body")
+        first = body.named_children[0] if body is not None and body.named_children else None
+        if (
+            first is not None
+            and first.type == "expression_statement"
+            and first.named_children
+            and first.named_children[0].type == "string"
+            and body is not None
+            and body.start_point.row > defn.start_point.row
+        ):
+            docstring = dedented[first.start_point.row : _end_row(first) + 1]
+            signature = signature[:-1] + docstring + signature[-1:]
+        return "\n".join(" " * indent + ln if ln.strip() else ln for ln in signature)
+    return None
+
+
 class _PythonChunker:
     def __init__(self, text: str, max_module_lines: int, window: int, overlap: int) -> None:
         self.lines = _split_lines(text)
