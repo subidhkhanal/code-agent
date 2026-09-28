@@ -1,0 +1,20 @@
+{
+  "repo": "https://github.com/pytest-dev/pytest",
+  "ref": "8.3.4",
+  "model": "BAAI/bge-small-en-v1.5",
+  "machine": "Windows AMD64, Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "python": "3.12.10",
+  "files_indexed": 563,
+  "python_files": 264,
+  "chunks": 6950,
+  "model_load_s": 0.48,
+  "scan_chunk_fts_s": 2.76,
+  "embed_s": 1130.0,
+  "embed_chunks_per_s": 6.2,
+  "initial_total_s": 1132.8,
+  "noop_sync_s": 0.489,
+  "incremental_samples": 20,
+  "incremental_p50_ms": 377.5,
+  "incremental_p95_ms": 446.4,
+  "incremental_chunks_reembedded_median": 1.0
+}
