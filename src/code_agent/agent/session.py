@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from code_agent.agent.loop import AgentEvent, AgentLoop, RetrievalDone, TaskResult
 from code_agent.agent.tasks import TaskStatus, TaskStore
-from code_agent.agent.tools import ToolContext, ToolRegistry
+from code_agent.agent.tools import Capability, ToolContext, ToolRegistry
 from code_agent.config import AgentConfig
 from code_agent.context.assembly import ContextAssembler
 from code_agent.context.log import TaskLog
@@ -24,6 +24,8 @@ from code_agent.llm.factory import build_gateway
 from code_agent.llm.gateway import Gateway, ModelUnavailableError
 from code_agent.llm.types import CancelToken, ProviderError
 from code_agent.retrieval.search import Searcher
+from code_agent.security.approvals import ApprovalManager, Approver
+from code_agent.security.audit import AuditLog
 from code_agent.security.paths import SensitivePathPolicy
 from code_agent.security.secrets import OutboundRedactor
 from code_agent.workspace import Workspace
@@ -44,7 +46,10 @@ class AgentSession:
         embedder: Embedder | None,
         *,
         gateway: Gateway | None = None,
+        approver: Approver | None = None,
     ) -> None:
+        """`approver` is the UI that asks the user about commands. Without one, the model gets no
+        command tool at all (not merely a tool that always says no)."""
         self.workspace = workspace
         self.cfg = cfg
         self.conn, self.repairs = open_index(workspace)
@@ -60,6 +65,8 @@ class AgentSession:
         self.tasks = TaskStore(self.conn, workspace.repo_id)
         self.changes = ChangeSetStore(self.conn, workspace.root)
         self.sensitive = SensitivePathPolicy(cfg.index.extra_sensitive)
+        self.audit = AuditLog(self.conn)
+        self.approvals = ApprovalManager(self.conn, approver) if approver else None
 
     def close(self) -> None:
         self.conn.close()
@@ -110,12 +117,16 @@ class AgentSession:
             on_event(event)
 
         budgets = self.token_budgets()
+        cancel = cancel or CancelToken()
         ctx = ToolContext(
-            self.workspace.root, self.sensitive, self.searcher, self.conn, self.workspace.repo_id
-        )
+            self.workspace.root, self.sensitive, self.searcher, self.conn, self.workspace.repo_id,
+            request_id=request_id, audit=self.audit, approvals=self.approvals, cancel=cancel,
+        )  # fmt: skip
+        allowed = {Capability.READ} | ({Capability.EXECUTE} if self.approvals else set())
+        redactions_before = self.redactor.redactions.copy()
         loop = AgentLoop(
             self.gateway,
-            ToolRegistry(ctx),
+            ToolRegistry(ctx, allowed=frozenset(allowed)),
             ContextAssembler(self.searcher, self.conn, self.workspace.repo_id,
                              top_k=self.cfg.retrieval.top_k),
             Planner(self.workspace.root, self.sensitive),
@@ -128,6 +139,15 @@ class AgentSession:
         result = loop.run(task, cancel)
         status = TaskStatus.WAITING_FOR_APPROVAL if result.plan else result.status
         self.tasks.update(request_id, status, result.usage)
+        new_redactions = self.redactor.redactions - redactions_before
+        if new_redactions:
+            # Kinds and counts only: the audit log must never hold the secret itself.
+            self.audit.record(
+                tool_name="outbound_redaction",
+                actor="system",
+                args={"kinds": dict(new_redactions)},
+                request_id=request_id,
+            )
         return request_id, result
 
     def apply(self, request_id: str, result: TaskResult) -> str:
@@ -137,8 +157,17 @@ class AgentSession:
             raise ValueError("task has no edits to apply")
         change_set_id = self.changes.apply(plan, request_id=request_id)
         self.tasks.update(request_id, TaskStatus.SUCCEEDED, result.usage)
+        self.audit.record(
+            tool_name="apply_change_set",
+            actor="user",
+            request_id=request_id,
+            args={"change_set_id": change_set_id, "files": sorted(plan.changes)},
+        )
         self.indexer.update_paths(plan.changes)  # keep the index in step with the edit
         return change_set_id
 
     def decline(self, request_id: str, result: TaskResult) -> None:
         self.tasks.update(request_id, TaskStatus.CANCELLED, result.usage)
+        files = sorted(result.plan.changes) if result.plan else []
+        self.audit.record(tool_name="decline_change_set", actor="user", request_id=request_id,
+                          args={"files": files})  # fmt: skip

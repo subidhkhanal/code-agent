@@ -41,6 +41,8 @@ from code_agent.index.watcher import watch
 from code_agent.llm.factory import build_providers
 from code_agent.llm.types import CancelToken, ProviderError
 from code_agent.retrieval.search import Mode, Searcher
+from code_agent.security.approvals import ApprovalPrompt, Scope
+from code_agent.security.audit import AuditLog
 from code_agent.workspace import Workspace
 
 app = typer.Typer(
@@ -227,6 +229,12 @@ def undo(
     conn, _ = open_index(ws)
     try:
         result = ChangeSetStore(conn, ws.root).undo(change_set)
+        AuditLog(conn).record(
+            tool_name="undo_change_set",
+            actor="user",
+            args={"change_set_id": result.change_set_id, "files": result.restored},
+            request_id=ChangeSetStore(conn, ws.root).request_id_of(result.change_set_id),
+        )
     except LookupError as exc:
         console.print(f"Nothing to undo ({escape(str(exc))}).")
         raise typer.Exit(1) from exc
@@ -310,6 +318,25 @@ def _render_event(event: AgentEvent) -> None:
         console.print(escape(event.message), style="dim", highlight=False)
 
 
+def _approve(prompt: ApprovalPrompt) -> Scope | None:
+    """Ask the user about one command. Runs on the task's worker thread."""
+    c = prompt.classification
+    console.print()
+    console.print(f"[bold]Agent wants to run:[/] {escape(c.command)}", highlight=False)
+    console.print(f"  classified: {escape(c.summary)} | cwd: {escape(c.cwd)}", style="dim",
+                  highlight=False)  # fmt: skip
+    if Scope.SESSION in prompt.allowed_scopes:
+        choices = {"o": Scope.ONCE, "s": Scope.SESSION, "d": None}
+        label = "Approve? [o]nce / [s]ession / [d]eny"
+    else:
+        choices = {"o": Scope.ONCE, "d": None}
+        label = "Approve? [o]nce / [d]eny (asked every time for this kind of command)"
+    while True:
+        answer = typer.prompt(label, default="d", show_default=True).strip().lower()[:1]
+        if answer in choices:
+            return choices[answer]
+
+
 def _run_cancellable[T](fn: Callable[[CancelToken], T]) -> T:
     """Run `fn` on a worker thread; Ctrl+C sets the cancel token instead of killing mid-write."""
     cancel = CancelToken()
@@ -385,7 +412,7 @@ def chat(
     """Interactive session: describe a change, review the diff, approve it."""
     cfg = load_config()
     ws = Workspace.discover(path)
-    session = AgentSession(ws, cfg, _embedder(cfg))
+    session = AgentSession(ws, cfg, _embedder(cfg), approver=_approve)
     try:
         problem = session.check_generation()
         if problem:
@@ -420,3 +447,46 @@ def chat(
                 _handle_task(session, task)
     finally:
         session.close()
+
+
+@app.command()
+def audit(
+    task: Annotated[
+        str | None, typer.Option("--task", help="Request id (default: latest).")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+    path: PathOpt = Path("."),
+) -> None:
+    """Show the audit log of tool calls and user actions for a task."""
+    ws = Workspace.discover(path)
+    if not ws.index_path.exists():
+        console.print("No audit log yet.")
+        raise typer.Exit(1)
+    conn, _ = open_index(ws)
+    try:
+        log = AuditLog(conn)
+        request_id = task or log.latest_request_id()
+        entries = log.for_task(request_id) if request_id else []
+    finally:
+        conn.close()
+    if not entries:
+        console.print("No audited actions found.")
+        raise typer.Exit(1)
+    if as_json:
+        typer.echo(json.dumps([e.__dict__ for e in entries], indent=2))
+        return
+    console.print(f"[bold]audit log for task {request_id}[/]")
+    for e in entries:
+        flags = [e.status or ""]
+        if e.approval_id:
+            flags.append(f"approval {e.approval_id[:8]}")
+        if e.redaction_applied:
+            flags.append("args redacted")
+        if e.output_hash:
+            flags.append(f"output sha256 {e.output_hash[:10]}")
+        console.print(
+            f"{e.executed_at[11:19]}  [cyan]{e.actor:<6}[/] [bold]{escape(e.tool_name)}[/]  "
+            f"[dim]{escape(' | '.join(flags))}[/]",
+            highlight=False,
+        )
+        console.print(f"          {escape(e.redacted_args[:300])}", style="dim", highlight=False)

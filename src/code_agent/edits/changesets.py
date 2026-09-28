@@ -136,6 +136,12 @@ class ChangeSetStore:
         self._set_status(change_set_id, ChangeSetStatus.UNDONE)
         return UndoResult(change_set_id, restored, untouched)
 
+    def request_id_of(self, change_set_id: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT request_id FROM change_sets WHERE id = ?", (change_set_id,)
+        ).fetchone()
+        return None if row is None else row[0]
+
     def _set_status(self, change_set_id: str, status: ChangeSetStatus) -> None:
         with self.conn:
             self.conn.execute(
