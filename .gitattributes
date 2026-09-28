@@ -1,0 +1,3 @@
+# Keep LF everywhere (also on Windows checkouts) so fixture bytes are identical on every OS.
+# Line-ending behaviour is tested explicitly with fixtures created inside the tests.
+* text=auto eol=lf
