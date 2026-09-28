@@ -4,23 +4,42 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.syntax import Syntax
 from rich.table import Table
 
+from code_agent.agent.loop import (
+    AgentEvent,
+    AssistantText,
+    EditProposed,
+    EditsRejected,
+    RetrievalDone,
+    Status,
+    TaskResult,
+    ToolFinished,
+    ToolStarted,
+)
+from code_agent.agent.session import AgentSession
+from code_agent.agent.tasks import TaskStatus
 from code_agent.config import AgentConfig, load_config
+from code_agent.edits.atomic import WriteConflictError
 from code_agent.edits.changesets import ChangeSetStore, UndoConflictError
+from code_agent.edits.diff import diff_stats, plan_diff
 from code_agent.index.embeddings import Embedder, FastEmbedEmbedder
 from code_agent.index.indexer import Indexer, IndexStats
 from code_agent.index.store import IndexStore, open_index
 from code_agent.index.watcher import watch
 from code_agent.llm.factory import build_providers
-from code_agent.llm.types import ProviderError
+from code_agent.llm.types import CancelToken, ProviderError
 from code_agent.retrieval.search import Mode, Searcher
 from code_agent.workspace import Workspace
 
@@ -259,3 +278,139 @@ def models() -> None:
         err.print("[yellow]No routes configured yet: set [llm.routes] in your config.[/]")
     if not ok:
         raise typer.Exit(1)
+
+
+# -- chat -----------------------------------------------------------------------------------------
+
+
+def _label(style: str, label: str, text: str) -> None:
+    """Print `[label] text`. Labels and text are escaped: tool output, paths and feedback come
+    from the model or the repo, and a `[...]` in them must never be parsed as Rich markup."""
+    console.print(f"[{style}]{escape(f'[{label}]')}[/] {escape(text)}", highlight=False)
+
+
+def _render_event(event: AgentEvent) -> None:
+    if isinstance(event, RetrievalDone):
+        _label("dim", "retrieval", event.bundle.summary())
+    elif isinstance(event, AssistantText):
+        console.print(event.text, end="", markup=False, highlight=False, soft_wrap=True)
+    elif isinstance(event, EditProposed):
+        _label("cyan", "edit", f"{event.block.path} (block {event.block.index + 1})")
+    elif isinstance(event, ToolStarted):
+        args = ", ".join(f"{k}={v!r}" for k, v in event.call.arguments.items())
+        _label("dim", "tool", f"{event.call.name}({args})")
+    elif isinstance(event, ToolFinished) and event.is_error:
+        _label("yellow", "tool error", event.summary)
+    elif isinstance(event, EditsRejected):
+        first = event.feedback.strip().splitlines()[0] if event.feedback.strip() else ""
+        _label("yellow", f"edits rejected, attempt {event.attempt}", first)
+    elif isinstance(event, Status):
+        console.print(escape(event.message), style="dim", highlight=False)
+
+
+def _run_cancellable[T](fn: Callable[[CancelToken], T]) -> T:
+    """Run `fn` on a worker thread; Ctrl+C sets the cancel token instead of killing mid-write."""
+    cancel = CancelToken()
+    box: dict[str, T] = {}
+    errors: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            box["value"] = fn(cancel)
+        except BaseException as exc:  # re-raised on the main thread
+            errors.append(exc)
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    try:
+        while worker.is_alive():
+            worker.join(0.1)
+    except KeyboardInterrupt:
+        cancel.cancel()
+        console.print("\n[yellow]cancelling...[/]")
+        worker.join()
+    if errors:
+        raise errors[0]
+    return box["value"]
+
+
+def _status_line(result: TaskResult, seconds: float) -> str:
+    u = result.usage
+    cost = "unknown (no price configured)" if u.cost_usd is None else f"${u.cost_usd:.4f}"
+    return (
+        f"{result.status.value.lower()} | {u.input_tokens:,} in + {u.output_tokens:,} out tokens | "
+        f"cost {cost} | {u.llm_calls} model calls, {u.tool_calls} tool calls | {seconds:.1f}s"
+    )
+
+
+def _handle_task(session: AgentSession, task: str) -> TaskResult:
+    started = time.monotonic()
+    request_id, result = _run_cancellable(
+        lambda cancel: session.run_task(task, cancel, _render_event)
+    )
+    console.print()
+    if result.plan is None:
+        style = "green" if result.status is TaskStatus.SUCCEEDED else "yellow"
+        console.print(f"[{style}]{result.message}[/]")
+    else:
+        added, removed = diff_stats(result.plan)
+        console.rule(f"diff: {len(result.plan.changes)} file(s), +{added} -{removed}")
+        console.print(Syntax(plan_diff(result.plan), "diff", theme="ansi_dark", word_wrap=True))
+        if typer.confirm(f"Apply changes to {len(result.plan.changes)} file(s)?", default=False):
+            try:
+                change_set = session.apply(request_id, result)
+            except WriteConflictError as exc:
+                err.print(f"[red]Not applied:[/] {exc}. Nothing was written; ask again.")
+            else:
+                console.print(f"[green]Applied[/] (change set {change_set[:12]}). "
+                              "Revert with `agent undo`.")  # fmt: skip
+        else:
+            session.decline(request_id, result)
+            console.print("Discarded; no files were changed.")
+    console.print(f"[dim]{_status_line(result, time.monotonic() - started)}[/]")
+    return result
+
+
+@app.command()
+def chat(
+    message: Annotated[
+        str | None, typer.Option("--message", "-m", help="Run one task, then exit.")
+    ] = None,
+    path: PathOpt = Path("."),
+) -> None:
+    """Interactive session: describe a change, review the diff, approve it."""
+    cfg = load_config()
+    ws = Workspace.discover(path)
+    session = AgentSession(ws, cfg, _embedder(cfg))
+    try:
+        problem = session.check_generation()
+        if problem:
+            err.print(f"[yellow]Generation unavailable:[/] {problem}")
+            err.print("`agent index`, `agent search` and `agent undo` still work.")
+            raise typer.Exit(1)
+        stats = session.refresh_index()
+        if stats.changed:
+            console.print(
+                f"[dim]index refreshed: +{stats.added} ~{stats.updated} -{stats.removed}[/]"
+            )
+        if message is not None:
+            result = _handle_task(session, message)
+            raise typer.Exit(0 if result.status is not TaskStatus.FAILED else 1)
+
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.history import FileHistory
+
+        prompt = PromptSession(history=FileHistory(str(ws.ensure_state_dir() / "chat_history")))
+        console.print(f"[bold]{ws.root}[/]  (Ctrl+C cancels a running task, Ctrl+D exits)")
+        while True:
+            try:
+                task = prompt.prompt("> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if task in ("exit", "quit"):
+                break
+            if task:
+                session.refresh_index()
+                _handle_task(session, task)
+    finally:
+        session.close()
