@@ -196,3 +196,20 @@ def test_execution_disabled_without_approval_manager(indexed: IndexedRepo, scope
     env.ctx.approvals = None
     result = env.run("git status")
     assert result.is_error and "not enabled" in result.content
+
+
+@pytest.mark.parametrize("command", ["pytest -q tests/test_tokens.py", "python -m pytest -q tests"])
+def test_test_commands_run_via_a_known_interpreter_not_path(
+    indexed: IndexedRepo, monkeypatch, command: str
+):
+    # Found in a real-model run: a bare `pytest` failed because it was not on PATH. PATH here
+    # holds only system dirs, so success proves the command did not rely on PATH lookup.
+    import os
+
+    system_dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep)
+                   if "system32" in d.lower() or d in ("/usr/bin", "/bin")]  # fmt: skip
+    monkeypatch.setenv("PATH", os.pathsep.join(system_dirs))
+    env = Env(indexed, ScriptedApprover(Scope.ONCE))
+    result = env.run(command)
+    assert not result.is_error, result.content
+    assert "1 failed, 1 passed" in result.content  # the fixture's planted bug, as expected

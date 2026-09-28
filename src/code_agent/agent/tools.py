@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -32,7 +33,7 @@ from code_agent.llm.types import CancelToken, ToolCall, ToolSpec
 from code_agent.retrieval.search import Searcher
 from code_agent.security.approvals import ApprovalManager
 from code_agent.security.audit import AuditLog
-from code_agent.security.commands import classify
+from code_agent.security.commands import Category, classify
 from code_agent.security.paths import (
     PathOutsideWorkspaceError,
     SensitivePathPolicy,
@@ -40,6 +41,7 @@ from code_agent.security.paths import (
     to_workspace_relpath,
 )
 from code_agent.security.runner import run_command
+from code_agent.shadow.validate import detect_python
 
 MAX_OUTPUT_CHARS = 16_000
 MAX_READ_LINES = 400
@@ -290,6 +292,31 @@ def get_references(ctx: ToolContext, args: SymbolArgs) -> str:
     return f"{len(out)} locations for {args.symbol}{note}:\n" + "\n".join(out)
 
 
+_PYTHON_NAMES = frozenset({"python", "python3", "py"})
+_BUNDLED_TOOLS = frozenset({"ruff", "pyright"})  # shipped with the agent (validation deps)
+_PROJECT_MODULES = frozenset({"pytest", "py.test", "mypy"})
+
+
+def _test_lint_argv(argv: list[str], root: Path) -> list[str]:
+    """Run test/lint commands through a known interpreter instead of whatever PATH resolves.
+
+    A bare `pytest` may not be on PATH at all, and a bare `python` on Windows can hit the
+    Microsoft Store alias. Tests use the project's interpreter (its .venv if it has one), so
+    they see the project's dependencies; ruff and pyright use the agent's bundled copies.
+    """
+    name = Path(argv[0].replace("\\", "/")).name.lower().removesuffix(".exe")
+    if name in _PYTHON_NAMES and len(argv) >= 3 and argv[1] == "-m":
+        module = argv[2].lower()
+        python = sys.executable if module in _BUNDLED_TOOLS else detect_python(root)
+        return [python, *argv[1:]]
+    if name in _BUNDLED_TOOLS:
+        return [sys.executable, "-m", name, *argv[1:]]
+    if name in _PROJECT_MODULES:
+        module = "pytest" if name == "py.test" else name
+        return [detect_python(root), "-m", module, *argv[1:]]
+    return argv
+
+
 def _shell_argv(command: str) -> list[str]:
     """Only used for commands the user explicitly approved *as shell commands*."""
     if os.name == "nt":
@@ -313,7 +340,12 @@ def run_terminal_command(ctx: ToolContext, args: CommandArgs) -> ToolOutput:
     reason = ctx.approvals.recheck(approval, ctx.request_id, ctx.cancel)
     if reason is not None:
         raise ToolDeniedError(f"`{args.command}` was not run: {reason}")
-    argv = _shell_argv(args.command) if c.needs_shell else list(c.argv)
+    if c.needs_shell:
+        argv = _shell_argv(args.command)
+    elif c.category is Category.TEST_LINT:
+        argv = _test_lint_argv(list(c.argv), ctx.root)
+    else:
+        argv = list(c.argv)
     cwd = resolve_in_workspace(ctx.root, args.cwd)
     try:
         result = run_command(argv, cwd, timeout_s=args.timeout_s, cancel=ctx.cancel)
