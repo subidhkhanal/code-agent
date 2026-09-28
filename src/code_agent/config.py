@@ -33,6 +33,11 @@ DEFAULT_TEXT_FILENAMES: tuple[str, ...] = ("Makefile", "Dockerfile", "README", "
 class IndexConfig(_Strict):
     # Default chosen on measured CPU throughput; see docs/adr/0002. The code-trained alternative
     # is "jinaai/jina-embeddings-v2-base-code" (about 3-7x slower to index on CPU).
+    embeddings: bool = Field(
+        default=True,
+        description="Compute vector embeddings. Off = keyword + symbol search only (e.g. for "
+        "large repos indexed from scratch inside a CPU-limited container).",
+    )
     embedding_model: str = Field(
         default="BAAI/bge-small-en-v1.5",
         description="fastembed model id. Changing it triggers a re-embed on the next index run.",

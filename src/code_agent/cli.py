@@ -69,7 +69,9 @@ def main(verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False) -> N
     )
 
 
-def _embedder(cfg: AgentConfig) -> Embedder:
+def _embedder(cfg: AgentConfig) -> Embedder | None:
+    if not cfg.index.embeddings:
+        return None
     return FastEmbedEmbedder(
         cfg.index.embedding_model, cfg.model_cache_dir, batch_size=cfg.index.embedding_batch_size
     )

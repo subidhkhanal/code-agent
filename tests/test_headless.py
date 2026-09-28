@@ -106,3 +106,23 @@ def test_cli_requires_both_flags_and_a_container(repo: Path, tmp_path: Path, mon
     result = runner.invoke(app, ["run", "--task", "x", "--headless", "--auto-approve",
                                  "-p", str(repo), "--out", str(tmp_path / "o")])  # fmt: skip
     assert result.exit_code == 3 and "only runs inside a container" in result.output
+
+
+def test_patch_includes_files_the_agent_created(repo: Path, tmp_path: Path):
+    create = ("A helper module.\n\nauth/helpers.py\n<<<<<<< SEARCH\n=======\n"
+              "def now():\n    return 0\n>>>>>>> REPLACE\n")  # fmt: skip
+    gw, _ = gateway([SCRIPT[0], FakeTurn(create)])
+    out = tmp_path / "out"
+    report = run_headless(Workspace.discover(repo), config(tmp_path, validation=False), "add it",
+                          out_dir=out, embedder=HashingEmbedder(), gateway=gw,
+                          allow_outside_container=True)  # fmt: skip
+    assert report.applied and report.files_changed == ["auth/helpers.py"]
+    patch = (out / "patch.diff").read_text()
+    assert "new file mode" in patch and "+def now():" in patch
+
+
+def test_embeddings_can_be_disabled(tmp_path: Path):
+    from code_agent.cli import _embedder
+
+    cfg = AgentConfig.model_validate({"index": {"embeddings": False}})
+    assert _embedder(cfg) is None

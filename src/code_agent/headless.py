@@ -110,6 +110,11 @@ def run_headless(
         if result.plan is not None and result.plan.changes:
             session.apply(request_id, result)
             applied = True
+            new_files = [p for p, c in result.plan.changes.items() if c.before is None]
+            if new_files:
+                # Plain `git diff` omits untracked files; intent-to-add makes new files show up
+                # in the patch without staging their content.
+                run_git(workspace.root, "add", "--intent-to-add", "--", *new_files)
         elif result.status is TaskStatus.SUCCEEDED:
             session.tasks.update(request_id, TaskStatus.SUCCEEDED, result.usage)
     finally:
