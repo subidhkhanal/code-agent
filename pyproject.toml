@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "code-agent"
+version = "0.1.0"
+description = "A terminal coding agent with a local hybrid code index, validated edits, and code-enforced approvals."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "prompt_toolkit>=3.0",
+    "pydantic>=2.7",
+    "pathspec>=0.12",
+    "tree-sitter>=0.25,<0.26",  # 0.26.0 segfaults on Windows (see docs/adr/0003)
+    "tree-sitter-python>=0.25,<0.26",
+    "sqlite-vec>=0.1.6",
+    "fastembed>=0.4",
+    "watchdog>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "pyright>=1.1.380",
+]
+
+[project.scripts]
+agent = "code_agent.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/code_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["tests/fixtures"]  # fixture repos are test *data*, including deliberate bugs
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # allow unicode glyphs (✓, →) in UI strings and docs
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["fixtures"]
+addopts = "-q"
+markers = [
+    "slow: needs the real embedding model (downloads weights on first run)",
+]
