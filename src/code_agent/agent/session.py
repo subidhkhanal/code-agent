@@ -25,6 +25,7 @@ from code_agent.llm.gateway import Gateway, ModelUnavailableError
 from code_agent.llm.types import CancelToken, ProviderError
 from code_agent.retrieval.search import Searcher
 from code_agent.security.paths import SensitivePathPolicy
+from code_agent.security.secrets import OutboundRedactor
 from code_agent.workspace import Workspace
 
 
@@ -52,11 +53,10 @@ class AgentSession:
         self.searcher = Searcher(workspace.index_path, workspace.repo_id, cfg.retrieval, embedder)
         self.gateway = gateway or build_gateway(cfg.llm)
         self.log = TaskLog(workspace.ensure_state_dir())
-        previous = self.gateway.outbound_filter
-        # The log is the last filter before a request leaves, so it records exactly what is sent.
-        self.gateway.outbound_filter = (
-            self.log if previous is None else (lambda request: self.log(previous(request)))
-        )
+        self.redactor = OutboundRedactor()
+        # Order matters: redact first, then log, so the log holds exactly what was sent and
+        # neither the provider nor our own logs ever see a detected secret.
+        self.gateway.outbound_filter = lambda request: self.log(self.redactor(request))
         self.tasks = TaskStore(self.conn, workspace.repo_id)
         self.changes = ChangeSetStore(self.conn, workspace.root)
         self.sensitive = SensitivePathPolicy(cfg.index.extra_sensitive)

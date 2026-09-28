@@ -40,6 +40,7 @@ from code_agent.security.paths import (
     resolve_in_workspace,
     to_workspace_relpath,
 )
+from code_agent.security.secrets import contains_placeholder
 
 BOM = b"\xef\xbb\xbf"
 _TERMINATOR = re.compile(r"\r\n|\n|\r")
@@ -56,6 +57,7 @@ class ApplyErrorCode(StrEnum):
     FILE_MISSING = "FILE_MISSING"
     ENCODING = "ENCODING"
     EMPTY_SEARCH = "EMPTY_SEARCH"
+    REDACTED_CONTENT = "REDACTED_CONTENT"
 
 
 @dataclass(frozen=True)
@@ -287,6 +289,12 @@ class Planner:
         plan.changes[rel] = FileChange(rel, real, None, doc.encode(), None)
 
     def _apply_block(self, doc: _Document, block: EditBlock) -> BlockResult:
+        if contains_placeholder(block.search) or contains_placeholder(block.replace):
+            # The model only ever saw the placeholder, not the secret. Writing it back would
+            # replace the user's real secret with the text "[REDACTED:...]".
+            return BlockResult(block, ApplyErrorCode.REDACTED_CONTENT,
+                               message="this block touches a line containing a redacted secret; "
+                               "edit around that line and leave it unchanged")  # fmt: skip
         needle = _strip_gutter(_block_lines(block.search))
         if not any(line.strip() for line in needle):
             return BlockResult(block, ApplyErrorCode.EMPTY_SEARCH,

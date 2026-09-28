@@ -222,3 +222,21 @@ def test_task_logs_record_retrieval_and_exact_requests(repo: Path, tmp_path: Pat
     ]
     assert [r["model"] for r in requests] == ["fake-cheap", "fake-strong", "fake-strong"]
     assert any(m["role"] == "tool" for m in requests[-1]["messages"])
+
+
+def test_secrets_in_source_never_leave_the_machine(repo: Path, tmp_path: Path, monkeypatch):
+    secret = "ghp_" + "Zx9Yw8Vu7Ts6Rq5Po4Nm3Lk2Ji1Hg0Fe9Dc8Ba7"
+    (repo / "auth" / "config.py").write_text(f'GITHUB_TOKEN = "{secret}"\nTIMEOUT = 30\n')
+    turns = [
+        {"text": "q"},
+        {"tool_calls": [{"name": "read_file", "arguments": {"path": "auth/config.py"}}]},
+        {"tool_calls": [{"name": "search_codebase", "arguments": {"query": "GITHUB_TOKEN"}}]},
+        {"text": "done"},
+    ]
+    _fake_llm_config(tmp_path, monkeypatch, turns)
+    result = runner.invoke(app, ["chat", "-m", "where is the github token set", "-p", str(repo)])
+    assert result.exit_code == 0, result.output
+    (log_dir,) = (repo / ".agent" / "logs").iterdir()
+    sent = (log_dir / "requests.jsonl").read_text(encoding="utf-8")
+    assert secret not in sent
+    assert "[REDACTED:github_token]" in sent  # the model saw that a secret exists, not its value

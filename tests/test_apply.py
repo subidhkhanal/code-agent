@@ -289,3 +289,15 @@ def test_partial_gutter_is_not_stripped(ws: Path):
     search = "    7 |     return token.expires_at > 0\n    return x\n"
     p = plan(ws, [block("auth/tokens.py", search, "pass\n")])
     assert not p.ok
+
+
+@pytest.mark.parametrize("where", ["search", "replace"])
+def test_blocks_touching_redacted_secrets_are_refused(ws: Path, where: str):
+    (ws / "settings.py").write_bytes(b"DEBUG = True\nAPI_KEY = 'real-secret-value'\n")
+    search = "API_KEY = '[REDACTED:assigned_secret]'\n" if where == "search" else "DEBUG = True\n"
+    replace = "DEBUG = False\n" + (
+        "API_KEY = '[REDACTED:assigned_secret]'\n" if where == "replace" else ""
+    )
+    p = plan(ws, [block("settings.py", search, replace)])
+    assert p.results[0].error is ApplyErrorCode.REDACTED_CONTENT
+    assert (ws / "settings.py").read_bytes().endswith(b"'real-secret-value'\n")
