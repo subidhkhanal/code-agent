@@ -111,7 +111,11 @@ BUGGY = (
 FIXED = "        return token.expires_at > time.time()\n"
 
 
-def _fake_llm_config(tmp_path: Path, monkeypatch, turns: list[dict]) -> None:
+def _fake_llm_config(
+    tmp_path: Path, monkeypatch, turns: list[dict], *, validation: bool = False
+) -> None:
+    """Scripted LLM through the real CLI. Shadow validation is off unless a test asks for it,
+    because it adds a test-run approval prompt to the conversation."""
     import json
 
     from code_agent.index.embeddings import HashingEmbedder
@@ -121,7 +125,8 @@ def _fake_llm_config(tmp_path: Path, monkeypatch, turns: list[dict]) -> None:
     config = tmp_path / "config.toml"
     config.write_text(
         f'[llm.providers.fake]\nkind = "fake"\nscript = "{script.as_posix()}"\n'
-        '[llm.routes]\ncheap = ["fake:fake-cheap"]\nstrong = ["fake:fake-strong"]\n',
+        '[llm.routes]\ncheap = ["fake:fake-cheap"]\nstrong = ["fake:fake-strong"]\n'
+        f"[validation]\nenabled = {'true' if validation else 'false'}\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("CODE_AGENT_CONFIG", str(config))
@@ -295,3 +300,68 @@ def test_apply_and_undo_are_audited_as_user_actions(repo: Path, tmp_path: Path, 
         assert action in view.output
     entries = json.loads(runner.invoke(app, ["audit", "--json", "-p", str(repo)]).output)
     assert entries[-1]["tool_name"] == "undo_change_set"  # linked to the same task
+
+
+# -- shadow validation through the real CLI (real ruff, pyright and pytest) ---------------------
+
+
+def test_chat_validates_in_shadow_before_review(repo: Path, tmp_path: Path, monkeypatch):
+    _fake_llm_config(tmp_path, monkeypatch, FIX_TURNS, validation=True)
+    # "o": allow running the targeted tests once; "y": apply.
+    result = runner.invoke(app, ["chat", "-m", "fix it", "-p", str(repo)], input="o\ny\n")
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "Agent wants to run: python -m pytest tests/test_tokens.py" in out
+    assert "[shadow] ruff ok | pyright ok | pytest ok" in out
+    assert "1 failing test(s) now pass" in out
+    assert "Applied 1 file(s)" in out
+    assert FIXED.encode() in (repo / "auth/tokens.py").read_bytes()
+
+
+def test_chat_auto_fixes_after_a_failed_validation(repo: Path, tmp_path: Path, monkeypatch):
+    typo = FIX_TURNS[2]["text"].replace("time.time()", "time.tme()")
+    follow_up = (
+        "Fix the typo.\n\nauth/tokens.py\n<<<<<<< SEARCH\n"
+        "        return token.expires_at > time.tme()\n=======\n"
+        "        return token.expires_at > time.time()\n>>>>>>> REPLACE\n"
+    )
+    turns = [FIX_TURNS[0], FIX_TURNS[1], {"text": typo}, {"text": follow_up}]
+    _fake_llm_config(tmp_path, monkeypatch, turns, validation=True)
+    # "s": allow tests for the session (the second round must not ask again); "y": apply.
+    result = runner.invoke(app, ["chat", "-m", "fix it", "-p", str(repo)], input="s\ny\n")
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "pyright 1 new problem(s)" in out  # real pyright caught the typo
+    assert "attempt 2" in out and "[shadow] ruff ok | pyright ok | pytest ok" in out
+    assert out.count("Agent wants to run") == 1
+    after = (repo / "auth/tokens.py").read_text()
+    assert "time.time()" in after and "time.tme" not in after
+
+
+def test_chat_declining_tests_still_runs_static_checks(repo: Path, tmp_path: Path, monkeypatch):
+    _fake_llm_config(tmp_path, monkeypatch, FIX_TURNS, validation=True)
+    result = runner.invoke(app, ["chat", "-m", "fix it", "-p", str(repo)], input="d\nn\n")
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())  # the status line wraps at the runner's 80 columns
+    assert "ruff ok | pyright ok | skipped: pytest (the user declined running tests)" in flat
+
+
+def test_per_file_review_applies_only_accepted_files(repo: Path, tmp_path: Path, monkeypatch):
+    readme_edit = (
+        "\nREADME.md\n<<<<<<< SEARCH\n# Sample service\n=======\n# Sample service (v2)\n"
+        ">>>>>>> REPLACE\n"
+    )
+    turns = [
+        FIX_TURNS[0],
+        {"tool_calls": [{"name": "read_file", "arguments": {"path": "README.md"}}]},
+        FIX_TURNS[1],
+        {"text": FIX_TURNS[2]["text"] + readme_edit},
+    ]
+    _fake_llm_config(tmp_path, monkeypatch, turns)
+    readme = (repo / "README.md").read_bytes()
+    # "p": per file; files are reviewed in sorted order: README.md (no), auth/tokens.py (yes).
+    result = runner.invoke(app, ["chat", "-m", "fix", "-p", str(repo)], input="p\nn\ny\n")
+    assert result.exit_code == 0, result.output
+    assert "[y]es / [n]o / [p]er file" in result.output and "Applied 1 file(s)" in result.output
+    assert (repo / "README.md").read_bytes() == readme
+    assert FIXED.encode() in (repo / "auth/tokens.py").read_bytes()

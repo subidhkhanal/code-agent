@@ -27,13 +27,15 @@ from code_agent.agent.loop import (
     TaskResult,
     ToolFinished,
     ToolStarted,
+    ValidationDone,
+    ValidationStarted,
 )
 from code_agent.agent.session import AgentSession
 from code_agent.agent.tasks import TaskStatus
 from code_agent.config import AgentConfig, load_config
 from code_agent.edits.atomic import WriteConflictError
 from code_agent.edits.changesets import ChangeSetStore, UndoConflictError
-from code_agent.edits.diff import diff_stats, plan_diff
+from code_agent.edits.diff import diff_stats, file_diff, plan_diff
 from code_agent.index.embeddings import Embedder, FastEmbedEmbedder
 from code_agent.index.indexer import Indexer, IndexStats
 from code_agent.index.store import IndexStore, open_index
@@ -314,6 +316,10 @@ def _render_event(event: AgentEvent) -> None:
     elif isinstance(event, EditsRejected):
         first = event.feedback.strip().splitlines()[0] if event.feedback.strip() else ""
         _label("yellow", f"edits rejected, attempt {event.attempt}", first)
+    elif isinstance(event, ValidationStarted):
+        _label("dim", "shadow", f"validating {len(event.files)} file(s) (attempt {event.attempt})")
+    elif isinstance(event, ValidationDone):
+        _label("green" if event.report.ok else "yellow", "shadow", event.report.summary())
     elif isinstance(event, Status):
         console.print(escape(event.message), style="dim", highlight=False)
 
@@ -372,6 +378,46 @@ def _status_line(result: TaskResult, seconds: float) -> str:
     )
 
 
+def _review(session: AgentSession, request_id: str, result: TaskResult) -> None:
+    """Show validation results and the diff; apply all, none, or a per-file selection."""
+    plan = result.plan
+    assert plan is not None
+    report = result.validation
+    if report is not None and not report.ok:
+        console.rule("[yellow]validation is still failing[/]")
+        console.print(escape(report.feedback()), highlight=False)
+    elif report is None and session.shadow_unavailable:
+        console.print(f"[dim]not validated: {escape(session.shadow_unavailable)}[/]")
+    added, removed = diff_stats(plan)
+    console.rule(f"diff: {len(plan.changes)} file(s), +{added} -{removed}")
+    console.print(Syntax(plan_diff(plan), "diff", theme="ansi_dark", word_wrap=True))
+
+    choices = "[y]es / [n]o / [p]er file" if len(plan.changes) > 1 else "[y]es / [n]o"
+    answer = typer.prompt(f"Apply changes to {len(plan.changes)} file(s)? {choices}",
+                          default="n").strip().lower()[:1]  # fmt: skip
+    files: list[str] | None = None
+    if answer == "p" and len(plan.changes) > 1:
+        files = []
+        for path in sorted(plan.changes):
+            console.rule(escape(path))
+            console.print(Syntax(file_diff(plan.changes[path]), "diff", theme="ansi_dark"))
+            if typer.confirm(f"Apply {path}?", default=False):
+                files.append(path)
+        answer = "y" if files else "n"
+    if answer != "y":
+        session.decline(request_id, result)
+        console.print("Discarded; no files were changed.")
+        return
+    try:
+        change_set = session.apply(request_id, result, files)
+    except WriteConflictError as exc:
+        err.print(f"[red]Not applied:[/] {escape(str(exc))}. Nothing was written; ask again.")
+        return
+    count = len(files) if files is not None else len(plan.changes)
+    console.print(f"[green]Applied {count} file(s)[/] (change set {change_set[:12]}). "
+                  "Revert with `agent undo`.")  # fmt: skip
+
+
 def _handle_task(session: AgentSession, task: str) -> TaskResult:
     started = time.monotonic()
     request_id, result = _run_cancellable(
@@ -382,22 +428,7 @@ def _handle_task(session: AgentSession, task: str) -> TaskResult:
         style = "green" if result.status is TaskStatus.SUCCEEDED else "yellow"
         console.print(f"[{style}]{escape(result.message)}[/]")
     else:
-        added, removed = diff_stats(result.plan)
-        console.rule(f"diff: {len(result.plan.changes)} file(s), +{added} -{removed}")
-        console.print(Syntax(plan_diff(result.plan), "diff", theme="ansi_dark", word_wrap=True))
-        if typer.confirm(f"Apply changes to {len(result.plan.changes)} file(s)?", default=False):
-            try:
-                change_set = session.apply(request_id, result)
-            except WriteConflictError as exc:
-                err.print(
-                    f"[red]Not applied:[/] {escape(str(exc))}. Nothing was written; ask again."
-                )
-            else:
-                console.print(f"[green]Applied[/] (change set {change_set[:12]}). "
-                              "Revert with `agent undo`.")  # fmt: skip
-        else:
-            session.decline(request_id, result)
-            console.print("Discarded; no files were changed.")
+        _review(session, request_id, result)
     console.print(f"[dim]{_status_line(result, time.monotonic() - started)}[/]")
     return result
 

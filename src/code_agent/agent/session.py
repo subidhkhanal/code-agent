@@ -9,7 +9,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from code_agent.agent.loop import AgentEvent, AgentLoop, RetrievalDone, TaskResult
+from code_agent.agent.loop import (
+    AgentEvent,
+    AgentLoop,
+    RetrievalDone,
+    TaskResult,
+    Validator,
+)
 from code_agent.agent.tasks import TaskStatus, TaskStore
 from code_agent.agent.tools import Capability, ToolContext, ToolRegistry
 from code_agent.config import AgentConfig
@@ -26,8 +32,11 @@ from code_agent.llm.types import CancelToken, ProviderError
 from code_agent.retrieval.search import Searcher
 from code_agent.security.approvals import ApprovalManager, Approver
 from code_agent.security.audit import AuditLog
+from code_agent.security.commands import classify
 from code_agent.security.paths import SensitivePathPolicy
 from code_agent.security.secrets import OutboundRedactor
+from code_agent.shadow.validate import ShadowValidator, ValidationReport
+from code_agent.shadow.worktree import ShadowUnavailableError, ShadowWorktree
 from code_agent.workspace import Workspace
 
 
@@ -67,9 +76,68 @@ class AgentSession:
         self.sensitive = SensitivePathPolicy(cfg.index.extra_sensitive)
         self.audit = AuditLog(self.conn)
         self.approvals = ApprovalManager(self.conn, approver) if approver else None
+        self._shadow: ShadowWorktree | None = None
+        self.shadow_unavailable: str | None = None
 
     def close(self) -> None:
+        if self._shadow is not None:
+            self._shadow.close()
         self.conn.close()
+
+    # -- validation ---------------------------------------------------------------------------
+
+    def _validator(self, request_id: str, cancel: CancelToken) -> Validator | None:
+        """A shadow validator for one task, or None (disabled / not a git repo)."""
+        vcfg = self.cfg.validation
+        if not vcfg.enabled:
+            return None
+        if self._shadow is None:
+            try:
+                self._shadow = ShadowWorktree(self.workspace)
+                self._shadow.create()
+            except ShadowUnavailableError as exc:
+                self.shadow_unavailable = str(exc)
+                self._shadow = None
+                return None
+
+        def test_gate(tests: list[str]) -> str | None:
+            # Running tests executes repository code (including the model's edits), so it goes
+            # through the same approval as any test/lint command.
+            if self.approvals is None:
+                return "no approval prompt available"
+            command = f"python -m pytest {' '.join(tests)}"
+            approval = self.approvals.authorize(
+                request_id, classify(command, root=self.workspace.root, sensitive=self.sensitive)
+            )
+            if approval is None:
+                return "the user declined running tests"
+            return self.approvals.recheck(approval, request_id, cancel)
+
+        validator = ShadowValidator(
+            self._shadow,
+            python=str(vcfg.python) if vcfg.python else None,
+            test_gate=test_gate,
+            lint=vcfg.lint,
+            type_check=vcfg.type_check,
+            tests=vcfg.tests,
+            test_timeout_s=vcfg.test_timeout_s,
+            full_suite_max_test_files=vcfg.full_suite_max_test_files,
+            cancel=cancel,
+        )
+
+        def validate(plan: ApplyPlan) -> ValidationReport:
+            report = validator.validate(plan)
+            self.audit.record(
+                tool_name="shadow_validation",
+                actor="system",
+                request_id=request_id,
+                args={"files": sorted(plan.changes), "tests": report.tests_run},
+                output=report.summary(),
+                status="ok" if report.ok else "failed",
+            )
+            return report
+
+        return validate
 
     # -- setup --------------------------------------------------------------------------------
 
@@ -135,6 +203,7 @@ class AgentSession:
             history_budget_tokens=budgets.prompt,
             max_output_tokens=budgets.output,
             on_event=on_event_logged,
+            validator=self._validator(request_id, cancel),
         )  # fmt: skip
         result = loop.run(task, cancel)
         status = TaskStatus.WAITING_FOR_APPROVAL if result.plan else result.status
@@ -150,11 +219,14 @@ class AgentSession:
             )
         return request_id, result
 
-    def apply(self, request_id: str, result: TaskResult) -> str:
-        """Apply an approved plan. Returns the change-set id (for `agent undo`)."""
+    def apply(self, request_id: str, result: TaskResult, files: list[str] | None = None) -> str:
+        """Apply an approved plan, or only the approved `files` of it. Returns the change-set id
+        (for `agent undo`)."""
         plan: ApplyPlan | None = result.plan
         if plan is None:
             raise ValueError("task has no edits to apply")
+        if files is not None:
+            plan = ApplyPlan(plan.results, {f: plan.changes[f] for f in files})
         change_set_id = self.changes.apply(plan, request_id=request_id)
         self.tasks.update(request_id, TaskStatus.SUCCEEDED, result.usage)
         self.audit.record(
