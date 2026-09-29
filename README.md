@@ -124,18 +124,34 @@ cost $0.21 and $0.41.
 **Pending:** the rest of the pilot, the 40-task subset, and the with/without shadow-validation
 ablation (§6.3 of the plan). Two resolved tasks say nothing about a resolve rate yet.
 
-### Retrieval recall (file level), in progress
+### Retrieval recall (file level)
 
-For each task, the index is built at the task's base commit, the query is the raw problem
-statement, and we check whether the file(s) the gold patch touches appear in the top-k ranked
-files ([`run_retrieval_eval.py`](evals/retrieval/run_retrieval_eval.py)). One checkout per repo,
-so moving between commits is an incremental index update.
+For each of the 10 pilot tasks, the index is built at the task's base commit, the query is the
+raw problem statement (no LLM rewrite), and we check whether the file the gold patch touches
+appears in the top-k ranked files ([`run_retrieval_eval.py`](evals/retrieval/run_retrieval_eval.py),
+raw results in [`results-pilot.json`](evals/retrieval/results-pilot.json)).
 
-_Pilot results are being computed; see [`evals/retrieval/`](evals/retrieval)._ So far all four
-conditions (BM25, vector, hybrid, hybrid + expansion) find the gold file in the top 10 for the
-first 4 Django tasks, whose issues name the relevant code. Incremental indexing across Django
-commits took 104 min (first build, 35k chunks embedded), then 18 min, 7 min, and 26 s, reusing
-up to 94% of vectors.
+| Condition | recall@5 | recall@10 |
+|---|---|---|
+| BM25 only | 0.7 | 0.8 |
+| vector only | 0.9 | 0.9 |
+| hybrid (symbol + BM25 + vector, RRF) | 0.9 | 0.9 |
+| hybrid + symbol expansion | 0.9 | 0.9 |
+
+What the ten tasks show (too few for fine distinctions):
+- **Vectors matter.** BM25 alone missed the file in the top 5 for three tasks: sphinx-8474,
+  matplotlib-25498, and django-16816 (the last one every condition missed). Hybrid recovered the
+  first two. The SWE-bench runs above currently use BM25 + symbol only, so this points at the
+  next improvement (see Limitations).
+- **Symbol expansion adds no recall here.** It adds *signatures of called code* to the context,
+  which is about what the model sees next to the hit, not about finding the file.
+- **The one miss is a query problem.** django-16816's issue text is mostly a traceback through
+  other files, which drowns the decisive token ("E108"). Querying with a focused phrase instead
+  (`admin check E108 list_display field`, hand-written to illustrate what the agent's query
+  rewrite step is for, not measured) ranks the right file #1 with hybrid and #2 with BM25.
+- **Incremental indexing pays off.** Across Django commits: 104 min for the first build (35k
+  chunks embedded on CPU), then 18 min, 7 min, and 26 s, reusing up to 94% of vectors. (One
+  step's wall time, django-16816, is excluded: the laptop slept during it.)
 
 ### Fast Apply
 
@@ -246,9 +262,11 @@ extra_sensitive = []  # added to the built-in sensitive patterns; can't remove t
   network isolation of test runs only exists on Linux. Headless mode is where the OS isolates
   (ADR 0007, 0009).
 - **SWE-bench numbers are early** and run on a free tier with a daily quota. Inside the task
-  containers retrieval is keyword + symbol only, and shadow tests only run where the task's
-  environment has pytest. Django uses its own runner, so Django tasks are validated with ruff
-  only.
+  containers retrieval is keyword + symbol only: CPU-embedding a large repo from scratch inside
+  a 2-CPU container takes longer than the task. The retrieval eval shows vectors add recall, so
+  the next step is to build the index outside the container (incrementally, per repo) and mount
+  it in. Shadow tests only run where the task's environment has pytest. Django uses its own
+  runner, so Django tasks are validated with ruff only.
 - **Validation baselines are heuristic:** tests are selected by name and imports, and
   diagnostics are compared without line numbers. A change covered only by a distant integration
   test won't trigger it.

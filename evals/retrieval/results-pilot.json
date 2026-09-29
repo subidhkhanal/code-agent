@@ -1,0 +1,613 @@
+{
+  "instances": 10,
+  "summary": {
+    "bm25": {
+      "recall@5": 0.7,
+      "recall@10": 0.8
+    },
+    "vector": {
+      "recall@5": 0.9,
+      "recall@10": 0.9
+    },
+    "hybrid": {
+      "recall@5": 0.9,
+      "recall@10": 0.9
+    },
+    "hybrid+exp": {
+      "recall@5": 0.9,
+      "recall@10": 0.9
+    }
+  },
+  "per_instance": [
+    {
+      "instance_id": "django__django-11099",
+      "repo": "django/django",
+      "gold": [
+        "django/contrib/auth/validators.py"
+      ],
+      "index_seconds": 6220.9,
+      "chunks_written": 35438,
+      "vectors_embedded": 35438,
+      "vectors_reused": 0,
+      "recall": {
+        "bm25": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "docs/ref/contrib/auth.txt",
+          "django/contrib/auth/validators.py",
+          "docs/releases/1.10.txt",
+          "django/contrib/auth/migrations/0004_alter_user_username_opts.py",
+          "django/contrib/auth/migrations/0007_alter_validators_add_error_messages.py"
+        ],
+        "vector": [
+          "django/contrib/auth/validators.py",
+          "docs/releases/1.10.txt",
+          "tests/auth_tests/test_validators.py",
+          "docs/releases/1.7.9.txt",
+          "docs/ref/validators.txt"
+        ],
+        "hybrid": [
+          "django/contrib/auth/validators.py",
+          "docs/releases/1.10.txt",
+          "docs/ref/contrib/auth.txt",
+          "tests/auth_tests/test_validators.py",
+          "django/contrib/auth/migrations/0008_alter_user_username_max_length.py"
+        ],
+        "hybrid+exp": [
+          "django/contrib/auth/validators.py",
+          "docs/releases/1.10.txt",
+          "docs/ref/contrib/auth.txt",
+          "tests/auth_tests/test_validators.py",
+          "django/contrib/auth/migrations/0008_alter_user_username_max_length.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "django__django-12915",
+      "repo": "django/django",
+      "gold": [
+        "django/contrib/staticfiles/handlers.py"
+      ],
+      "index_seconds": 1103.4,
+      "chunks_written": 28769,
+      "vectors_embedded": 8865,
+      "vectors_reused": 19904,
+      "recall": {
+        "bm25": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "django/contrib/staticfiles/handlers.py",
+          "django/core/handlers/asgi.py",
+          "django/test/client.py",
+          "tests/asgi/tests.py",
+          "django/core/handlers/base.py"
+        ],
+        "vector": [
+          "django/core/handlers/base.py",
+          "django/core/handlers/asgi.py",
+          "django/contrib/staticfiles/handlers.py",
+          "tests/middleware_exceptions/tests.py",
+          "django/test/client.py"
+        ],
+        "hybrid": [
+          "django/core/handlers/asgi.py",
+          "django/contrib/staticfiles/handlers.py",
+          "django/test/client.py",
+          "django/core/handlers/wsgi.py",
+          "django/core/handlers/base.py"
+        ],
+        "hybrid+exp": [
+          "django/core/handlers/asgi.py",
+          "django/contrib/staticfiles/handlers.py",
+          "django/test/client.py",
+          "django/core/handlers/wsgi.py",
+          "django/core/handlers/base.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "django__django-13315",
+      "repo": "django/django",
+      "gold": [
+        "django/forms/models.py"
+      ],
+      "index_seconds": 400.2,
+      "chunks_written": 17892,
+      "vectors_embedded": 2894,
+      "vectors_reused": 14998,
+      "recall": {
+        "bm25": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "django/db/models/fields/related.py",
+          "tests/admin_widgets/tests.py",
+          "django/forms/models.py",
+          "django/contrib/admin/options.py",
+          "docs/ref/contrib/admin/index.txt"
+        ],
+        "vector": [
+          "django/forms/models.py",
+          "tests/model_forms/tests.py",
+          "django/db/models/fields/related.py",
+          "docs/ref/models/fields.txt",
+          "django/db/models/fields/reverse_related.py"
+        ],
+        "hybrid": [
+          "django/db/models/fields/related.py",
+          "django/forms/models.py",
+          "tests/model_forms/tests.py",
+          "docs/ref/models/fields.txt",
+          "django/contrib/admin/options.py"
+        ],
+        "hybrid+exp": [
+          "django/db/models/fields/related.py",
+          "django/forms/models.py",
+          "tests/model_forms/tests.py",
+          "docs/ref/models/fields.txt",
+          "django/contrib/admin/options.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "django__django-13551",
+      "repo": "django/django",
+      "gold": [
+        "django/contrib/auth/tokens.py"
+      ],
+      "index_seconds": 26.0,
+      "chunks_written": 2674,
+      "vectors_embedded": 149,
+      "vectors_reused": 2525,
+      "recall": {
+        "bm25": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "django/contrib/auth/tokens.py",
+          "docs/topics/auth/default.txt",
+          "docs/releases/1.11.txt",
+          "tests/auth_tests/test_views.py",
+          "django/contrib/auth/forms.py"
+        ],
+        "vector": [
+          "docs/topics/auth/default.txt",
+          "django/contrib/auth/tokens.py",
+          "django/contrib/auth/forms.py",
+          "django/contrib/auth/views.py",
+          "django/contrib/admin/templates/registration/password_reset_email.html"
+        ],
+        "hybrid": [
+          "django/contrib/auth/tokens.py",
+          "django/contrib/auth/forms.py",
+          "docs/topics/auth/default.txt",
+          "django/contrib/auth/base_user.py",
+          "tests/auth_tests/test_views.py"
+        ],
+        "hybrid+exp": [
+          "django/contrib/auth/tokens.py",
+          "django/contrib/auth/forms.py",
+          "docs/topics/auth/default.txt",
+          "django/contrib/auth/base_user.py",
+          "tests/auth_tests/test_views.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "django__django-14382",
+      "repo": "django/django",
+      "gold": [
+        "django/core/management/templates.py"
+      ],
+      "index_seconds": 562.2,
+      "chunks_written": 22398,
+      "vectors_embedded": 4504,
+      "vectors_reused": 17894,
+      "recall": {
+        "bm25": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "tests/admin_scripts/tests.py",
+          "django/core/files/utils.py",
+          "tests/flatpages_tests/test_forms.py",
+          "django/core/management/templates.py",
+          "django/core/management/commands/startapp.py"
+        ],
+        "vector": [
+          "django/core/management/commands/startapp.py",
+          "tests/admin_scripts/tests.py",
+          "django/core/management/templates.py",
+          "docs/ref/django-admin.txt",
+          "django/template/backends/base.py"
+        ],
+        "hybrid": [
+          "django/core/management/templates.py",
+          "tests/admin_scripts/tests.py",
+          "django/core/management/commands/startapp.py",
+          "django/core/files/utils.py",
+          "tests/flatpages_tests/test_forms.py"
+        ],
+        "hybrid+exp": [
+          "django/core/management/templates.py",
+          "tests/admin_scripts/tests.py",
+          "django/core/management/commands/startapp.py",
+          "django/core/files/utils.py",
+          "tests/flatpages_tests/test_forms.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "django__django-16816",
+      "repo": "django/django",
+      "gold": [
+        "django/contrib/admin/checks.py"
+      ],
+      "index_seconds": 34422.4,
+      "chunks_written": 40020,
+      "vectors_embedded": 29334,
+      "vectors_reused": 10686,
+      "recall": {
+        "bm25": {
+          "@5": 0.0,
+          "@10": 0.0
+        },
+        "vector": {
+          "@5": 0.0,
+          "@10": 0.0
+        },
+        "hybrid": {
+          "@5": 0.0,
+          "@10": 0.0
+        },
+        "hybrid+exp": {
+          "@5": 0.0,
+          "@10": 0.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "django/core/handlers/asgi.py",
+          "docs/intro/tutorial07.txt",
+          "docs/howto/custom-template-backend.txt",
+          "django/views/templates/technical_500.txt",
+          "docs/topics/testing/tools.txt"
+        ],
+        "vector": [
+          "django/core/exceptions.py",
+          "docs/ref/exceptions.txt",
+          "docs/ref/checks.txt",
+          "django/views/templates/technical_500.html",
+          "django/contrib/admin/exceptions.py"
+        ],
+        "hybrid": [
+          "django/core/exceptions.py",
+          "django/views/templates/technical_500.txt",
+          "django/template/base.py",
+          "django/contrib/admin/templatetags/base.py",
+          "django/contrib/admin/templatetags/admin_list.py"
+        ],
+        "hybrid+exp": [
+          "django/core/exceptions.py",
+          "django/views/templates/technical_500.txt",
+          "django/template/base.py",
+          "django/contrib/admin/templatetags/base.py",
+          "django/contrib/admin/templatetags/admin_list.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-23476",
+      "repo": "matplotlib/matplotlib",
+      "gold": [
+        "lib/matplotlib/figure.py"
+      ],
+      "index_seconds": 1066.7,
+      "chunks_written": 13402,
+      "vectors_embedded": 13402,
+      "vectors_reused": 0,
+      "recall": {
+        "bm25": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "doc/users/installing/index.rst",
+          ".github/ISSUE_TEMPLATE/bug_report.yml",
+          ".github/workflows/tests.yml",
+          "lib/matplotlib/tests/test_pickle.py",
+          "lib/matplotlib/figure.py"
+        ],
+        "vector": [
+          "lib/matplotlib/figure.py",
+          "lib/matplotlib/tests/test_figure.py",
+          "lib/matplotlib/backends/backend_ps.py",
+          "lib/matplotlib/backends/_backend_tk.py",
+          "lib/matplotlib/rcsetup.py"
+        ],
+        "hybrid": [
+          "doc/users/installing/index.rst",
+          "lib/matplotlib/figure.py",
+          "setupext.py",
+          ".github/ISSUE_TEMPLATE/bug_report.yml",
+          "lib/matplotlib/tests/test_figure.py"
+        ],
+        "hybrid+exp": [
+          "doc/users/installing/index.rst",
+          "lib/matplotlib/figure.py",
+          "setupext.py",
+          ".github/ISSUE_TEMPLATE/bug_report.yml",
+          "lib/matplotlib/tests/test_figure.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-25498",
+      "repo": "matplotlib/matplotlib",
+      "gold": [
+        "lib/matplotlib/colorbar.py"
+      ],
+      "index_seconds": 516.1,
+      "chunks_written": 12556,
+      "vectors_embedded": 5210,
+      "vectors_reused": 7346,
+      "recall": {
+        "bm25": {
+          "@5": 0.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "lib/matplotlib/tests/test_image.py",
+          "galleries/examples/lines_bars_and_markers/multivariate_marker_plot.py",
+          "lib/matplotlib/colors.py",
+          "doc/users/prev_whats_new/whats_new_3.4.0.rst",
+          "galleries/examples/images_contours_and_fields/image_masked.py"
+        ],
+        "vector": [
+          "lib/matplotlib/colorbar.py",
+          "lib/matplotlib/figure.py",
+          "lib/matplotlib/cm.py",
+          "doc/api/prev_api_changes/api_changes_3.3.0/deprecations.rst",
+          "lib/matplotlib/tests/test_colorbar.py"
+        ],
+        "hybrid": [
+          "lib/matplotlib/colorbar.py",
+          "lib/matplotlib/figure.py",
+          "lib/matplotlib/pyplot.py",
+          "lib/matplotlib/colors.py",
+          "galleries/examples/color/colorbar_basics.py"
+        ],
+        "hybrid+exp": [
+          "lib/matplotlib/colorbar.py",
+          "lib/matplotlib/figure.py",
+          "lib/matplotlib/pyplot.py",
+          "lib/matplotlib/colors.py",
+          "galleries/examples/color/colorbar_basics.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-8474",
+      "repo": "sphinx-doc/sphinx",
+      "gold": [
+        "sphinx/domains/std.py"
+      ],
+      "index_seconds": 661.3,
+      "chunks_written": 9274,
+      "vectors_embedded": 9274,
+      "vectors_reused": 0,
+      "recall": {
+        "bm25": {
+          "@5": 0.0,
+          "@10": 0.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "tests/test_build_html.py",
+          "tests/test_build_latex.py",
+          "doc/usage/configuration.rst",
+          "sphinx/environment/collectors/toctree.py",
+          "doc/man/sphinx-build.rst"
+        ],
+        "vector": [
+          "tests/test_build_html.py",
+          "sphinx/domains/std.py",
+          "tests/test_build_latex.py",
+          "sphinx/writers/latex.py",
+          "doc/usage/configuration.rst"
+        ],
+        "hybrid": [
+          "tests/test_build_html.py",
+          "tests/test_build_latex.py",
+          "doc/usage/configuration.rst",
+          "sphinx/domains/std.py",
+          "sphinx/writers/latex.py"
+        ],
+        "hybrid+exp": [
+          "tests/test_build_html.py",
+          "tests/test_build_latex.py",
+          "doc/usage/configuration.rst",
+          "sphinx/domains/std.py",
+          "sphinx/writers/latex.py"
+        ]
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-20442",
+      "repo": "sympy/sympy",
+      "gold": [
+        "sympy/physics/units/util.py"
+      ],
+      "index_seconds": 2793.5,
+      "chunks_written": 41119,
+      "vectors_embedded": 41119,
+      "vectors_reused": 0,
+      "recall": {
+        "bm25": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "vector": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid": {
+          "@5": 1.0,
+          "@10": 1.0
+        },
+        "hybrid+exp": {
+          "@5": 1.0,
+          "@10": 1.0
+        }
+      },
+      "top5": {
+        "bm25": [
+          "sympy/physics/units/tests/test_unit_system_cgs_gauss.py",
+          "sympy/printing/pretty/tests/test_pretty.py",
+          "sympy/physics/units/tests/test_unitsystem.py",
+          "doc/src/modules/physics/units/philosophy.rst",
+          "sympy/physics/units/util.py"
+        ],
+        "vector": [
+          "sympy/physics/units/util.py",
+          "sympy/physics/units/quantities.py",
+          "sympy/simplify/fu.py",
+          "sympy/parsing/sympy_parser.py",
+          "sympy/physics/units/tests/test_unit_system_cgs_gauss.py"
+        ],
+        "hybrid": [
+          "sympy/physics/units/util.py",
+          "sympy/physics/units/quantities.py",
+          "sympy/physics/units/tests/test_unit_system_cgs_gauss.py",
+          "sympy/printing/pretty/tests/test_pretty.py",
+          "sympy/physics/units/tests/test_util.py"
+        ],
+        "hybrid+exp": [
+          "sympy/physics/units/util.py",
+          "sympy/physics/units/quantities.py",
+          "sympy/physics/units/tests/test_unit_system_cgs_gauss.py",
+          "sympy/printing/pretty/tests/test_pretty.py",
+          "sympy/physics/units/tests/test_util.py"
+        ]
+      }
+    }
+  ]
+}
