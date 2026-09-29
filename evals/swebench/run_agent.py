@@ -88,6 +88,13 @@ def run_instance(inst: dict, out: Path, config: Path, cfg: SandboxConfig, timeou
     return report
 
 
+def quota_exhausted(report: dict) -> bool:
+    """The task stopped because every model's daily quota was used up, not on its merits."""
+    return report.get("status") == "FAILED" and "exceeded your current quota" in (
+        report.get("message") or ""
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True, help="run name, e.g. pilot or full-validation")
@@ -128,6 +135,14 @@ def main() -> None:
         inst = instances[iid]
         pulled = ensure_image(inst["image"])
         report = run_instance(inst, out, config, cfg, args.timeout)
+        if quota_exhausted(report):
+            # Not a result: park the attempt (kept for inspection) and requeue the task.
+            parked = run_dir / "_quota_deferred" / f"{iid}-{int(time.time())}"
+            parked.parent.mkdir(exist_ok=True)
+            out.rename(parked)
+            print(f"[{n}/{len(ids)}] {iid}: daily model quota exhausted; stopping. "
+                  "Re-run tomorrow to continue.", flush=True)  # fmt: skip
+            return
         patch = (
             (out / "patch.diff").read_text(encoding="utf-8")
             if (out / "patch.diff").exists()

@@ -16,9 +16,12 @@ max_delay_s = 60.0
 
 [llm.routes]
 cheap = ["gemini:gemini-3.5-flash-lite"]
-strong = ["gemini:gemini-3.8-flash", "gemini:gemini-3.7-flash", "gemini:gemini-3.5-flash"]
+# Free tier: each model has its own 20 requests/day quota, so more fallbacks = more daily runs.
+strong = ["gemini:gemini-3.8-flash", "gemini:gemini-3.7-flash", "gemini:gemini-3.6-flash",
+          "gemini:gemini-3.5-flash"]
 
 # Google's published paid-tier prices, fetched 2026-09-29 (3.8-flash doubles on 2027-01-01).
+# The runs use the free tier, so these give an *estimated* paid cost; the actual cost is $0.
 [llm.pricing."gemini:gemini-3.5-flash-lite"]
 input_per_mtok = 0.30
 output_per_mtok = 2.50
@@ -26,6 +29,9 @@ output_per_mtok = 2.50
 input_per_mtok = 0.75
 output_per_mtok = 3.75
 [llm.pricing."gemini:gemini-3.7-flash"]
+input_per_mtok = 0.75
+output_per_mtok = 3.75
+[llm.pricing."gemini:gemini-3.6-flash"]
 input_per_mtok = 0.75
 output_per_mtok = 3.75
 [llm.pricing."gemini:gemini-3.5-flash"]
