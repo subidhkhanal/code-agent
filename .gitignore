@@ -5,6 +5,7 @@ __pycache__/
 build/
 dist/
 .venv/
+.venv-eval/
 venv/
 
 # Tool caches
@@ -26,3 +27,7 @@ benchmarks/.repos/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Eval run outputs (large; summaries are committed separately)
+evals/swebench/runs/
+evals/swebench/instances.jsonl

@@ -1,0 +1,50 @@
+# Agent configuration used for the SWE-bench runs (mounted into each task container).
+# Model names and prices are configuration, verified against the provider at startup.
+
+[index]
+# Indexing django or sympy from scratch with CPU embeddings inside a 2-CPU container takes far
+# longer than the task itself, so SWE-bench runs use keyword + symbol retrieval. The retrieval
+# ablation (evals/retrieval) measures what vectors would add.
+embeddings = false
+
+[llm]
+# The pilot hit sustained 503 "high demand" responses: retry longer, and fall back across
+# models that have separate capacity.
+max_attempts = 6
+base_delay_s = 2.0
+max_delay_s = 60.0
+
+[llm.routes]
+cheap = ["gemini:gemini-3.5-flash-lite"]
+strong = ["gemini:gemini-3.8-flash", "gemini:gemini-3.7-flash", "gemini:gemini-3.5-flash"]
+
+# Google's published paid-tier prices, fetched 2026-09-29 (3.8-flash doubles on 2027-01-01).
+[llm.pricing."gemini:gemini-3.5-flash-lite"]
+input_per_mtok = 0.30
+output_per_mtok = 2.50
+[llm.pricing."gemini:gemini-3.8-flash"]
+input_per_mtok = 0.75
+output_per_mtok = 3.75
+[llm.pricing."gemini:gemini-3.7-flash"]
+input_per_mtok = 0.75
+output_per_mtok = 3.75
+[llm.pricing."gemini:gemini-3.5-flash"]
+input_per_mtok = 1.50
+output_per_mtok = 9.00
+
+[budgets]
+max_tokens = 1500000
+max_usd = 0.75
+max_tool_calls = 60
+max_seconds = 1500
+max_edit_attempts = 3
+max_fix_attempts = 3
+
+[validation]
+enabled = true
+# The task image's own environment (SWE-bench installs it at this path in every image).
+python = "/opt/miniconda3/envs/testbed/bin/python"
+# Old, untyped codebases (Python 3.6-3.9 era): pyright is slow here and adds little signal.
+type_check = false
+test_timeout_s = 600
+full_suite_max_test_files = 0
