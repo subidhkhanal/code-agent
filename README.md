@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/subidhkhanal/code-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/subidhkhanal/code-agent/actions/workflows/ci.yml)
 
+**Project page: https://subidhkhanal.github.io/code-agent/**
+
 A terminal coding agent for Python repositories. It indexes your repo locally, finds the code a
 request is about, and has an LLM propose focused edits. Every edit is checked before you see
 it: it must match exactly one place in a file the model has read, and it's validated in a hidden
