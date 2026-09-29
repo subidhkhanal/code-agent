@@ -13,25 +13,39 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import subprocess
-import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
 
 
+HARNESS_IMAGE = "swebench-harness:5.0.2"
+
+
 def harness(run_dir: Path, run: str, ids: list[str], workers: int) -> dict:
+    """Run the official harness, unchanged, in a Linux container (docker/harness.Dockerfile).
+
+    On a Windows host the harness writes its eval scripts with CRLF line endings, which breaks
+    them inside the task containers (found on the first scored run). In a Linux container it
+    behaves as upstream intends; it drives the host's Docker daemon through the socket.
+    """
     run_id = f"code-agent-{run}"
     cmd = [
-        sys.executable, "-m", "swebench.harness.run_evaluation",
+        "docker", "run", "--rm",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", f"{run_dir.resolve()}:/run-dir", "-w", "/run-dir",
+        "-v", "swebench-hf-cache:/root/.cache/huggingface",
+        HARNESS_IMAGE, "python", "-m", "swebench.harness.run_evaluation",
         "--dataset_name", "SWE-bench/SWE-bench_Lite", "--split", "test",
-        "--predictions_path", str((run_dir / "predictions.jsonl").resolve()),
+        "--predictions_path", "/run-dir/predictions.jsonl",
         "--run_id", run_id, "--max_workers", str(workers), "--timeout", "1800",
         "--instance_ids", *ids,
     ]  # fmt: skip
-    proc = subprocess.run(cmd, cwd=run_dir, capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", check=False)  # fmt: skip
+    env = {**os.environ, "MSYS_NO_PATHCONV": "1"}  # keep Git Bash from rewriting /paths
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", check=False, env=env)  # fmt: skip
     (run_dir / "harness.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
     reports = list(run_dir.glob(f"*.{run_id}.json"))
     if not reports:
