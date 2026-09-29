@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from pathlib import Path
 
 import numpy as np
@@ -24,9 +25,11 @@ def chunk_rows(ix: IndexedRepo, file_path: str) -> list[tuple]:
 
 
 def edit(path: Path, old: str, new: str) -> None:
-    text = path.read_text(encoding="utf-8")
-    assert old in text
-    path.write_text(text.replace(old, new), encoding="utf-8")
+    # Bytes, not text: write_text on Windows turns \n into \r\n, which silently changes the
+    # file size (and made a same-size-edit test pass for the wrong reason).
+    data = path.read_bytes()
+    assert old.encode() in data
+    path.write_bytes(data.replace(old.encode(), new.encode()))
 
 
 def bump_mtime(path: Path, seconds: int = 10) -> None:
@@ -90,11 +93,30 @@ def test_touch_without_content_change_is_not_reindexed(indexed: IndexedRepo):
 
 
 def test_same_size_edit_within_racy_window_is_detected(indexed: IndexedRepo):
+    """The racy case: the file was modified within the mtime-resolution window before it was
+    hashed, then edited again without changing size or mtime. The fast path must not trust it.
+
+    (This test used to pass on Windows by accident: NTFS doesn't restore a nanosecond mtime
+    exactly, so the edit was always seen. On Linux the mtime is restored exactly.)"""
     path = indexed.root / "billing/invoice.py"
-    st = path.stat()
+    now = time.time_ns()
+    os.utime(path, ns=(now, now))  # modified "just now"...
+    indexed.indexer.sync()  # ...and hashed immediately: within the racy window
     edit(path, 'TAX_RATE = Decimal("0.2")', 'TAX_RATE = Decimal("0.3")')  # same size
-    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))  # and same mtime
+    os.utime(path, ns=(now, now))  # and exactly the same mtime
     assert indexed.indexer.sync().updated == 1
+
+
+def test_same_size_same_mtime_edit_outside_window_is_a_known_limit(indexed: IndexedRepo):
+    """Outside the racy window, an edit that keeps size and mtime identical is not seen, by
+    design (like git's index). Documented, not a bug: normal editors always move the mtime."""
+    path = indexed.root / "billing/invoice.py"
+    old = 1_600_000_000_000_000_000
+    os.utime(path, ns=(old, old))
+    indexed.indexer.sync()
+    edit(path, 'TAX_RATE = Decimal("0.2")', 'TAX_RATE = Decimal("0.3")')
+    os.utime(path, ns=(old, old))
+    assert indexed.indexer.sync().updated == 0
 
 
 def test_deleted_file_removes_chunks_bm25_rows_and_vectors(indexed: IndexedRepo):

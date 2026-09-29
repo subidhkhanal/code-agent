@@ -50,7 +50,8 @@ def test_this_host_is_not_detected_as_a_container():
     assert in_container() is False
 
 
-def test_refuses_outside_a_container(repo: Path, tmp_path: Path):
+def test_refuses_outside_a_container(repo: Path, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("code_agent.headless.in_container", lambda: False)  # CI may be a container
     gw, _ = gateway(SCRIPT)
     with pytest.raises(HeadlessRefusedError, match="only runs inside a container"):
         run_headless(Workspace.discover(repo), config(tmp_path, validation=False), "fix it",
@@ -98,6 +99,7 @@ def test_headless_failure_still_writes_a_report(repo: Path, tmp_path: Path):
 
 
 def test_cli_requires_both_flags_and_a_container(repo: Path, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("code_agent.headless.in_container", lambda: False)
     monkeypatch.setenv("CODE_AGENT_CONFIG", str(tmp_path / "none.toml"))
     runner = CliRunner()
     result = runner.invoke(app, ["run", "--task", "x", "-p", str(repo)])

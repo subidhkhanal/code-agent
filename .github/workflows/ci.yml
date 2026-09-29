@@ -21,7 +21,10 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
+        run: |
+          # pyright's bundled Node.js needs libatomic (found by a local Linux CI preview)
+          sudo apt-get update -qq && sudo apt-get install -y -qq libatomic1
+          pip install -e ".[dev]"
 
       - name: Lint
         run: |
