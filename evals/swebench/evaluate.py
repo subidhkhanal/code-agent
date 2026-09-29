@@ -47,6 +47,14 @@ def harness(run_dir: Path, run: str, ids: list[str], workers: int) -> dict:
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                           errors="replace", check=False, env=env)  # fmt: skip
     (run_dir / "harness.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
+    # The harness can leave its (idle) evaluation containers running; each holds a task image's
+    # memory. Remove this run's containers explicitly.
+    names = subprocess.run(
+        ["docker", "ps", "-aq", "--filter", f"name=sweb.eval.*.{run_id}"],
+        capture_output=True, text=True, check=False,
+    ).stdout.split()  # fmt: skip
+    if names:
+        subprocess.run(["docker", "rm", "-f", *names], capture_output=True, check=False)
     reports = list(run_dir.glob(f"*.{run_id}.json"))
     if not reports:
         raise SystemExit(f"harness produced no report; see {run_dir / 'harness.log'}")
