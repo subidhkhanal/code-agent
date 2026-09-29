@@ -82,10 +82,13 @@ class Request:
 class ProviderError(RuntimeError):
     """A provider call failed. `retryable` decides between backoff-and-retry and giving up."""
 
-    def __init__(self, message: str, *, retryable: bool, status: int | None = None) -> None:
+    def __init__(
+        self, message: str, *, retryable: bool, status: int | None = None, quota: bool = False
+    ) -> None:
         super().__init__(message)
         self.retryable = retryable
         self.status = status
+        self.quota = quota  # a daily quota is exhausted: retrying today cannot succeed
 
 
 class CancelledError(RuntimeError):

@@ -176,3 +176,22 @@ def test_cancel_stops_reading_the_stream():
     cancel.cancel()
     with pytest.raises(Exception, match="cancelled"):
         list(stream)
+
+
+@pytest.mark.parametrize(
+    ("quota_id", "retryable", "quota"),
+    [
+        ("GenerateRequestsPerDayPerProjectPerModel-FreeTier", False, True),  # wait until tomorrow
+        ("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", True, False),  # back off, retry
+    ],
+)
+def test_daily_quota_429_is_not_retried_but_per_minute_is(quota_id, retryable, quota):
+    body = {"error": {"code": 429, "message": "You exceeded your current quota",
+                      "details": [{"violations": [{"quotaId": quota_id}]}]}}  # fmt: skip
+
+    def handler(request):
+        return httpx.Response(429, json=body)
+
+    with pytest.raises(ProviderError) as exc:
+        list(provider(handler).stream(Request("m", (Message("user", "q"),)), CancelToken()))
+    assert exc.value.retryable is retryable and exc.value.quota is quota

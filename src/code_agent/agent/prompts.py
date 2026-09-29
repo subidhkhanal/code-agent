@@ -24,6 +24,8 @@ line-number gutter that read_file shows.
 - Include just enough lines for SEARCH to match exactly one place. Prefer several small blocks \
 over one large block.
 - To create a new file, use an empty SEARCH section.
+- When you need several files or searches, request them all in one turn (several tool
+calls at once) rather than one per turn.
 - Put every edit block for the task in a single reply. If blocks are rejected, send the \
 complete corrected set again.
 

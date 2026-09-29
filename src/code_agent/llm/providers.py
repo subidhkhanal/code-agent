@@ -219,11 +219,16 @@ class GeminiProvider:
     def _checked(resp: httpx.Response) -> httpx.Response:
         if resp.status_code >= 400:
             resp.read()
-            detail = resp.text[:300]
+            text = resp.text
+            # A per-*day* quota (free tier: 20 requests/day/model) can't be waited out with
+            # backoff; per-minute limits can. Only the former is marked non-retryable, so the
+            # gateway moves straight to the next route instead of burning retries.
+            daily = resp.status_code == 429 and "PerDay" in text
             raise ProviderError(
-                f"gemini HTTP {resp.status_code}: {detail}",
-                retryable=resp.status_code in RETRYABLE_STATUS,
+                f"gemini HTTP {resp.status_code}: {text[:300]}",
+                retryable=resp.status_code in RETRYABLE_STATUS and not daily,
                 status=resp.status_code,
+                quota=daily,
             )
         return resp
 
