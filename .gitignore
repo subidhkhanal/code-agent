@@ -32,3 +32,4 @@ Thumbs.db
 evals/swebench/runs/
 evals/swebench/instances.jsonl
 evals/retrieval/.repos/
+evals/**/*.log

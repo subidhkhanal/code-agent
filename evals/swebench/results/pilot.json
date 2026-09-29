@@ -1,0 +1,36 @@
+{
+  "run": "pilot",
+  "instances": 1,
+  "resolved": 1,
+  "resolve_rate": 1.0,
+  "empty_patches": 0,
+  "harness_errors": 0,
+  "agent_failed": 0,
+  "avg_cost_usd": 0.4066,
+  "total_cost_usd": 0.4066,
+  "avg_seconds": 601.9,
+  "avg_llm_calls": 25,
+  "avg_tool_calls": 23,
+  "avg_edit_attempts": 0,
+  "avg_fix_attempts": 1,
+  "apply_first_try_rate": 1.0,
+  "rejection_reasons": {},
+  "per_instance": [
+    {
+      "instance_id": "django__django-13551",
+      "resolved": true,
+      "harness_error": false,
+      "patch_empty": false,
+      "status": "SUCCEEDED",
+      "message": "edits validated",
+      "cost_usd": 0.4066176,
+      "seconds": 601.9,
+      "llm_calls": 25,
+      "tool_calls": 23,
+      "edit_attempts": 0,
+      "fix_attempts": 1,
+      "rejections": [],
+      "validation": "ruff ok | skipped: pytest (could not run: /opt/miniconda3/envs/testbed/bin/python: No module named pytest)"
+    }
+  ]
+}
