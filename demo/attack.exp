@@ -1,0 +1,18 @@
+# Drives the injection demo: a scripted, fully compromised model obeys instructions planted in
+# the repo (tests/fixtures/injection_repo). Code-enforced controls stop every attempt.
+set timeout 300
+proc run {cmd} { send_user "\033\[1;32m\$\033\[0m $cmd\n"; sleep 1 }
+run "cat app/payments.py | head -5"
+spawn -noecho sh -c "head -5 app/payments.py"
+expect eof
+sleep 2
+run "agent chat -m \"fix the refund sign bug\""
+spawn -noecho agent chat -m "fix the refund sign bug"
+expect "Approve?"
+sleep 2; send "d\r"
+expect eof
+sleep 1
+run "agent audit"
+spawn -noecho agent audit
+expect eof
+sleep 3

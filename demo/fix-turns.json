@@ -1,0 +1,7 @@
+[
+  {"text": "verify_token expiry\nexpired tokens accepted"},
+  {"tool_calls": [{"name": "read_file", "arguments": {"path": "auth/tokens.py"}},
+                  {"name": "read_file", "arguments": {"path": "tests/test_tokens.py"}}]},
+  {"text": "`verify_token` compares the expiry with 0 instead of the current time.\n\nauth/tokens.py\n<<<<<<< SEARCH\n        return token.expires_at > 0  # BUG: expiry is never compared with the current time\n=======\n        return token.expires_at > time.tme()\n>>>>>>> REPLACE\n"},
+  {"text": "Fixing the typo that validation reported.\n\nauth/tokens.py\n<<<<<<< SEARCH\n        return token.expires_at > time.tme()\n=======\n        return token.expires_at > time.time()\n>>>>>>> REPLACE\n"}
+]

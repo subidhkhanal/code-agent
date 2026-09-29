@@ -1,0 +1,29 @@
+# Drives the bug-fix demo. The model's replies are scripted (demo/fix-turns.json); everything
+# else is the real CLI: indexing, retrieval, Fast Apply, shadow validation with real ruff,
+# pyright and pytest, the approval prompt, review, apply and undo.
+set timeout 600
+proc run {cmd} { send_user "\033\[1;32m\$\033\[0m $cmd\n"; sleep 1 }
+run "agent index"
+spawn -noecho agent index
+expect eof
+sleep 1
+run "agent search \"expired tokens accepted\" -k 5"
+spawn -noecho agent search "expired tokens accepted" -k 5
+expect eof
+sleep 2
+run "agent chat -m \"fix the bug where expired tokens are still accepted\""
+spawn -noecho agent chat -m "fix the bug where expired tokens are still accepted"
+expect "Approve?"
+sleep 2; send "s\r"
+expect "Apply changes"
+sleep 3; send "y\r"
+expect eof
+sleep 1
+run "python -m pytest -q tests"
+spawn -noecho python -m pytest -q -p no:cacheprovider tests
+expect eof
+sleep 1
+run "agent undo"
+spawn -noecho agent undo
+expect eof
+sleep 2

@@ -7,5 +7,6 @@
 **/.ruff_cache
 benchmarks/.repos
 evals/**/runs
-tests
+tests/*
+!tests/fixtures
 docs
