@@ -31,3 +31,4 @@ Thumbs.db
 # Eval run outputs (large; summaries are committed separately)
 evals/swebench/runs/
 evals/swebench/instances.jsonl
+evals/retrieval/.repos/
