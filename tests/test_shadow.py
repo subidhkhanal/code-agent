@@ -157,6 +157,24 @@ def test_new_files_are_validated_too(repo: Path, shadow):
     assert any(d.file == "auth/helpers.py" and d.rule == "F821" for d in report.new_diagnostics)
 
 
+def test_static_checks_that_cannot_run_are_never_reported_as_ok(repo: Path, shadow, monkeypatch):
+    # Found by a Linux CI preview: pyright's Node runtime could not start and validation still
+    # said "pyright ok". Simulate both static checkers failing to start.
+    from code_agent.security.runner import CommandResult
+
+    def broken(self, argv, timeout=180):
+        return CommandResult(tuple(argv), 127, "error while loading shared libraries: libatomic",
+                             False, False, False, 0.1, False)  # fmt: skip
+
+    monkeypatch.setattr(ShadowValidator, "_run", broken)
+    plan = plan_for(repo, ("auth/tokens.py", BUGGY, FIXED))
+    report = ShadowValidator(shadow, tests=False).validate(plan)
+    assert report.attempted == []
+    assert [s.split(" ")[0] for s in report.skipped] == ["ruff", "pyright"]
+    assert all("libatomic" in s for s in report.skipped)
+    assert "ok" not in report.summary().replace("not validated", "")
+
+
 def test_pytest_that_cannot_run_is_never_reported_as_ok(repo: Path, shadow, tmp_path: Path):
     # Found running headless in Docker: the interpreter had no pytest, and validation said
     # "pytest ok". A run with no per-test results must be reported as not validated.

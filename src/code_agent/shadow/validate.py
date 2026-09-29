@@ -223,25 +223,42 @@ class ShadowValidator:
         return run_command(argv, self.shadow.root, timeout_s=timeout, cancel=self.cancel,
                            isolate_network=True, env=self._env())  # fmt: skip
 
-    def _ruff(self, files: list[str]) -> list[Diagnostic]:
+    @staticmethod
+    def _failure(result: CommandResult) -> str:
+        last = result.output.strip().splitlines()[-1:] or [f"exit code {result.exit_code}"]
+        return f"could not run: {last[0][:160]}"
+
+    def _ruff(self, files: list[str]) -> tuple[list[Diagnostic], str | None]:
+        """(diagnostics, reason ruff could not run or None). Like pytest, a check that did not
+        run is reported as such, never as a pass."""
         result = self._run([sys.executable, "-m", "ruff", "check", "--output-format=json",
                             "--no-cache", "--exit-zero", *files])  # fmt: skip
+        try:
+            items = json.loads(result.output or "[]")
+        except json.JSONDecodeError:
+            return [], self._failure(result)
+        if result.exit_code != 0:  # --exit-zero: anything else means ruff itself failed
+            return [], self._failure(result)
         out: list[Diagnostic] = []
-        for item in json.loads(result.output or "[]"):
+        for item in items:
             rel = (
                 Path(item["filename"]).resolve().relative_to(self.shadow.root.resolve()).as_posix()
             )
             out.append(Diagnostic("ruff", rel, item["location"]["row"], item.get("code") or "",
                                   item["message"]))  # fmt: skip
-        return out
+        return out, None
 
-    def _pyright(self, files: list[str]) -> list[Diagnostic]:
+    def _pyright(self, files: list[str]) -> tuple[list[Diagnostic], str | None]:
         result = self._run([sys.executable, "-m", "pyright", "--outputjson",
                             "--pythonpath", self.python, *files], timeout=300)  # fmt: skip
         start = result.output.find("{")
-        if start < 0:
-            return []
-        data = json.loads(result.output[start:])
+        # pyright exits 0 (no errors) or 1 (errors found); 2+ means it failed to run.
+        if start < 0 or result.exit_code not in (0, 1):
+            return [], self._failure(result)
+        try:
+            data = json.loads(result.output[start:])
+        except json.JSONDecodeError:
+            return [], self._failure(result)
         out: list[Diagnostic] = []
         for d in data.get("generalDiagnostics", []):
             if d.get("severity") != "error":
@@ -252,7 +269,7 @@ class ShadowValidator:
                 continue
             out.append(Diagnostic("pyright", rel, d["range"]["start"]["line"] + 1,
                                   d.get("rule", ""), d["message"].split("\n")[0]))  # fmt: skip
-        return out
+        return out, None
 
     def _pytest(self, test_files: list[str]) -> tuple[dict[str, bool], str, str | None]:
         """(test id -> passed, tail of the output, reason pytest could not run or None).
@@ -356,14 +373,18 @@ class ShadowValidator:
         if not files:
             return []
         diagnostics: list[Diagnostic] = []
-        if self.lint:
-            diagnostics += self._ruff(files)
-            if record:
-                report.attempted.append("ruff")
-        if self.type_check:
-            diagnostics += self._pyright(files)
-            if record:
-                report.attempted.append("pyright")
+        checks = [("ruff", self._ruff)] if self.lint else []
+        checks += [("pyright", self._pyright)] if self.type_check else []
+        for name, check in checks:
+            found, problem = check(files)
+            if not record:
+                diagnostics += found  # baseline: a failure here shows up again after the edit
+            elif problem is None:
+                diagnostics += found
+                report.attempted.append(name)
+            else:
+                report.skipped.append(f"{name} ({problem})")
+                report.warnings.append(f"{name} {problem}; not validated")
         return diagnostics
 
 
