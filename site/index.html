@@ -136,13 +136,13 @@
     runs the same engine in a locked-down container.
   </p>
   <div class="cta">
-    <a class="btn primary" href="https://github.com/subidhkhanal/code-agent">View on GitHub</a>
-    <a class="btn" href="#demo">Watch the demo</a>
-    <a class="btn" href="https://github.com/subidhkhanal/code-agent/tree/main/docs/adr">Design decisions (10 ADRs)</a>
+    <a class="btn primary" href="https://code-agent-playground.onrender.com/">Try it live in your browser</a>
+    <a class="btn" href="https://github.com/subidhkhanal/code-agent">View on GitHub</a>
+    <a class="btn" href="https://github.com/subidhkhanal/code-agent/tree/main/docs/adr">Design decisions (11 ADRs)</a>
   </div>
   <div class="chips">
     <span class="chip">Python 3.12</span><span class="chip">tree-sitter</span><span class="chip">SQLite FTS5 + sqlite-vec</span>
-    <span class="chip">local ONNX embeddings</span><span class="chip">Gemini API</span><span class="chip">git worktrees</span>
+    <span class="chip">local ONNX embeddings</span><span class="chip">Claude API</span><span class="chip">FastAPI + SSE</span><span class="chip">git worktrees</span>
     <span class="chip">ruff · pyright · pytest</span><span class="chip">Docker</span><span class="chip">SWE-bench harness</span>
     <span class="chip">GitHub Actions</span>
   </div>
@@ -216,7 +216,7 @@ flowchart LR
     L --> R[Retrieval<br/>symbol + BM25 + vector, RRF]
     R --> IX[(Local index<br/>FTS5 + sqlite-vec)]
     L --> G[LLM gateway<br/>routing · retries · fallback<br/>secret redaction]
-    G --> P[(Gemini API)]
+    G --> P[(Claude API<br/>or Gemini API)]
     L --> T[Tools] --> AP{Approval policy<br/>in code}
     L --> FA[Fast Apply<br/>unique match · base-hash check]
     FA --> SH[Shadow worktree<br/>ruff · pyright · tests]
@@ -309,10 +309,13 @@ flowchart LR
 <section id="try">
   <div class="wrap">
     <h2>Try it</h2>
-    <p class="sub">Needs Python 3.12 and a Gemini API key. Config lives in your home directory, never in the repo.</p>
+    <p class="sub"><strong><a href="https://code-agent-playground.onrender.com/">Run it in your browser</a></strong> on a sample repo: no install, no key.
+      It runs the real agent on Claude, with a small daily budget, so each visitor gets a few runs a day.
+      The first visit after a quiet spell can take a minute or two while the free server wakes up.</p>
+    <p class="sub">Or install the CLI. Needs Python 3.12 and a Claude (or Gemini) API key. Config lives in your home directory, never in the repo.</p>
 <pre class="cmd"><span class="c"># install</span>
 pipx install git+https://github.com/subidhkhanal/code-agent
-export GEMINI_API_KEY=...        <span class="c"># PowerShell: $env:GEMINI_API_KEY = "..."</span>
+export ANTHROPIC_API_KEY=...     <span class="c"># or GEMINI_API_KEY; PowerShell: $env:ANTHROPIC_API_KEY = "..."</span>
 agent models                     <span class="c"># pick models, add them to ~/.config/code-agent/config.toml</span>
 
 <span class="c"># use</span>
