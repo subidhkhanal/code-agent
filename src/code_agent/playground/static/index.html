@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>code-agent playground</title>
-<meta name="description" content="Run a coding agent on a small buggy repo from your browser: it searches the code, edits it, and validates the edit with lint, type checks and tests before showing you the diff.">
+<meta name="description" content="Run a coding agent on a small buggy repo from your browser: it searches the code, edits it, and validates the edit with lint and tests before showing you the diff.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -139,8 +139,8 @@
 <main>
   <p class="intro">Pick a small buggy repo, describe a fix, and watch the agent work on it. It
     <strong>searches the code</strong>, <strong>proposes edits</strong>, and
-    <strong>validates them</strong> in a throwaway copy with lint, type checks and the repo's tests
-    before showing you the diff. Nothing it does here touches anything real.</p>
+    <strong>validates them</strong> in a throwaway copy (lint and the repo's own tests) before
+    showing you the diff. Nothing it does here touches anything real.</p>
 
   <div class="grid">
     <div>
@@ -332,7 +332,7 @@
         break;
       case "edit": add("✎", "", [e.new_file ? "New file " : "Proposed an edit to ", code(e.path)]); break;
       case "rejected": add("↺", "warn", [`Edit rejected by Fast Apply (attempt ${e.attempt}); the model gets the reason and retries`], e.feedback); break;
-      case "validating": add("⧗", "", [`Validating in a shadow worktree (round ${e.attempt}): lint, type check, tests`]); break;
+      case "validating": add("⧗", "", [`Validating in a shadow worktree (round ${e.attempt})`]); break;
       case "validated":
         add(e.ok ? "✓" : "✗", e.ok ? "ok" : "warn", [e.ok ? "Validation passed" : "Validation found problems; feeding them back"], e.summary);
         break;

@@ -58,7 +58,8 @@ def _make_undumpable() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m code_agent.playground")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=7860)
+    # Hosts such as Render tell the app which port to bind through $PORT.
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "7860")))
     parser.add_argument("--config", type=Path, default=None, help="agent config TOML")
     parser.add_argument("--key-fd", type=int, default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()

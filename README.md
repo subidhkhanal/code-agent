@@ -226,6 +226,7 @@ budget with per-run reservations, a per-run cost cap, a few runs per visitor per
 test/lint commands allowed. The key never sits in the server's environment (it is handed over
 through a pipe), the server process is non-dumpable so the tests it runs can't read its memory,
 and every byte sent to the browser is scrubbed of it.
+It deploys to Render's free plan from [`render.yaml`](render.yaml).
 
 ## Install and use
 

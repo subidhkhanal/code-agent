@@ -28,6 +28,15 @@ cache_write_per_mtok = 5.0
 [retrieval]
 max_context_tokens = 8000    # the sample repos are tiny
 
+# Sized for a free host (0.1 CPU, 512 MB): measured there, a run takes ~65 s and peaks at
+# ~140 MB this way, versus ~7 min and ~430 MB with embeddings and pyright on. Keyword +
+# symbol search is plenty for repos of a few files. Turn both on with >= 1 CPU.
+[index]
+embeddings = false
+
+[validation]
+type_check = false
+
 [budgets]
 max_edit_attempts = 3
 max_fix_attempts = 2

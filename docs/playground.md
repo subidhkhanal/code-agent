@@ -16,8 +16,7 @@ python -m code_agent.playground      # http://127.0.0.1:7860
 Or the exact image that gets deployed:
 
 ```bash
-deploy/huggingface/assemble.sh /tmp/space
-docker build -t code-agent-playground /tmp/space
+docker build -f deploy/playground.Dockerfile -t code-agent-playground .
 docker run --rm -p 7860:7860 -e ANTHROPIC_API_KEY code-agent-playground
 ```
 
@@ -39,24 +38,22 @@ Environment variables, read at startup:
 
 The model, effort level and prices are in [`deploy/playground.toml`](../deploy/playground.toml).
 
-## Deploy to Hugging Face Spaces
+## Deploy to Render (free)
 
-One-time setup:
+[`render.yaml`](../render.yaml) describes the service: Docker, free plan (no card; 0.1 CPU,
+512 MB, sleeps after 15 idle minutes), health check on `/api/status`, and automatic redeploys of
+`main` once CI passes. The config in `deploy/playground.toml` is sized for that box; measured
+under the same limits, a run takes about 65 s and peaks at about 140 MB.
 
 1. **API key.** In the Claude Console, create a key for the playground and set a monthly spend
    limit on its workspace (for example USD 20). This is the hard stop if anything else fails.
-2. **Deploy access.** Create a Hugging Face access token with *write* access. In the GitHub
-   repo's *Settings → Secrets and variables → Actions*, add the secret `HF_TOKEN` (the token)
-   and the variable `HF_SPACE` (for example `your-name/code-agent`).
-3. **First deploy.** Run the *Playground* workflow from the Actions tab (or push to `main`). It
-   creates the Space (Docker, free CPU tier) if it doesn't exist and uploads the build folder.
-4. **Secret.** In the Space's *Settings → Variables and secrets*, add a **secret** named
-   `ANTHROPIC_API_KEY`. Paste the key there and nowhere else. The Space restarts with it.
-
-From then on, every push to `main` that passes CI redeploys the Space
-([`.github/workflows/playground.yml`](../.github/workflows/playground.yml)). A build takes
-about five minutes.
+2. **Deploy.** Open
+   <https://render.com/deploy?repo=https://github.com/subidhkhanal/code-agent>, sign in with
+   GitHub, and paste the key when Render asks for `ANTHROPIC_API_KEY`. The first build takes a
+   few minutes.
 
 After the first deploy, check that per-visitor limits see real addresses: the runs-left counter
 must drop for you after a run, and must not drop when you send a request with a made-up
 `X-Forwarded-For` header from a different address.
+
+Hugging Face Spaces was the first choice, but Docker Spaces now need a paid PRO subscription.

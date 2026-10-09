@@ -78,9 +78,11 @@ shown as a diff, never applied anywhere persistent.
    secret scanner.
 5. Code and samples are installed as root; the app runs as uid 1000 and can't modify them.
 
-**Hosting.** Hugging Face Spaces (Docker SDK, free CPU tier). The image is built from a folder
-assembled from the repo (`deploy/huggingface/assemble.sh`), so the image tested locally is the
-image that is deployed. A GitHub workflow uploads that folder after CI passes.
+**Hosting.** Render's free web-service plan (`render.yaml`): Docker, no card, 0.1 CPU and
+512 MB, asleep after 15 idle minutes. Hugging Face Spaces was the first choice, but Docker Spaces
+now require a paid subscription. On 0.1 CPU the full configuration was measured at ~7 minutes
+and ~430 MB per run, so the playground turns off embeddings (keyword + symbol search is enough
+for repos of a few files) and pyright (ruff and the tests still run): ~65 s and ~140 MB.
 
 ## Consequences
 
@@ -93,5 +95,6 @@ image that is deployed. A GitHub workflow uploads that folder after CI passes.
 - **Per-visitor limits depend on the proxy.** `PLAYGROUND_PROXY_HOPS` picks the address the
   host's proxy appended to `X-Forwarded-For`. If it is set wrong, visitors share or can spoof an
   identity. The global budget does not depend on it.
-- The free tier sleeps after two days without visitors; the first visit after that waits about a
-  minute for the container to start.
+- The free plan sleeps after 15 idle minutes; the first visit after that waits one to two
+  minutes while the container wakes and starts.
+- Validation in the playground skips pyright for lack of CPU; the CLI keeps it.

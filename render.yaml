@@ -1,0 +1,16 @@
+# Render Blueprint for the hosted playground (docs/playground.md).
+# Free plan: no card needed; 0.1 CPU and 512 MB, sleeps after 15 idle minutes.
+services:
+  - type: web
+    name: code-agent-playground
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/playground.Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/status
+    autoDeployTrigger: checksPass   # redeploy on pushes to main once CI is green
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false                 # asked for at setup; never stored in the repo
+      - key: PLAYGROUND_PROXY_HOPS
+        value: "1"
