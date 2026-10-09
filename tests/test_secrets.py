@@ -10,7 +10,7 @@ from code_agent.security.secrets import (
 )
 
 # Assembled at runtime so this file itself never contains a scannable literal secret.
-AWS = "AKIA" + "IOSFODNN7EXAMPLE"
+CLOUD_KEY = "AKIA" + "IOSFODNN7EXAMPLE"
 GH = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
 OPENAI = "sk-proj-" + "Zx9Yw8Vu7Ts6Rq5Po4Nm3Lk2Ji1"
 GOOGLE = "AIza" + "SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q"
@@ -27,7 +27,7 @@ RANDOM_B64 = "q8Zt3LmX9pRv2WkY7nBcD4eFgH1jKs0Tu6Vw5Xy+aZ/Q"
 
 @pytest.mark.parametrize(
     ("secret", "kind"),
-    [(AWS, "aws_access_key"), (GH, "github_token"), (OPENAI, "openai_key"),
+    [(CLOUD_KEY, "cloud_access_key"), (GH, "github_token"), (OPENAI, "openai_key"),
      (GOOGLE, "google_api_key"), (GOOGLE_NEW, "google_token"), (SLACK, "slack_token"),
      (JWT, "jwt"), (PEM, "private_key"), (RANDOM_B64, "high_entropy")],
 )  # fmt: skip
@@ -77,7 +77,7 @@ def test_entropy_values():
 
 
 def test_placeholders_are_detectable_and_not_re_redacted():
-    clean, _ = redact(f"k = '{AWS}'")
+    clean, _ = redact(f"k = '{CLOUD_KEY}'")
     assert contains_placeholder(clean)
     assert redact(clean) == (clean, [])  # idempotent
 
@@ -89,13 +89,15 @@ def test_outbound_redactor_covers_messages_and_tool_arguments():
         (
             Message("system", "rules"),
             Message("user", f"my key is {GH}"),
-            Message("assistant", "", (ToolCall("1", "search_codebase", {"query": AWS, "k": 3}),)),
+            Message(
+                "assistant", "", (ToolCall("1", "search_codebase", {"query": CLOUD_KEY, "k": 3}),)
+            ),
             Message("tool", f"<tool_output>{PEM}</tool_output>", tool_call_id="1"),
         ),
     )
     out = redactor(request)
     flat = repr(out)
-    assert GH not in flat and AWS not in flat and "MIIEpAIBAAKCAQEA" not in flat
+    assert GH not in flat and CLOUD_KEY not in flat and "MIIEpAIBAAKCAQEA" not in flat
     assert out.messages[2].tool_calls[0].arguments["k"] == 3  # non-strings untouched
     assert redactor.applied
-    assert dict(redactor.redactions) == {"github_token": 1, "aws_access_key": 1, "private_key": 1}
+    assert dict(redactor.redactions) == {"github_token": 1, "cloud_access_key": 1, "private_key": 1}

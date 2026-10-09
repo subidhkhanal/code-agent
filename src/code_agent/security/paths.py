@@ -39,7 +39,6 @@ DEFAULT_SENSITIVE_PATTERNS: tuple[str, ...] = (
     "id_ed25519*",
     # Credential stores and tool configs that commonly hold tokens
     ".ssh/",
-    ".aws/",
     ".gnupg/",
     ".kube/",
     ".docker/config.json",

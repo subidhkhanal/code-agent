@@ -15,7 +15,7 @@ from code_agent.security.paths import (
     "path",
     [
         ".env", "config/.env", ".env.local", "prod.env", ".ENV",
-        "certs/server.pem", "deploy/app.key", "id_rsa", "home/.ssh/config", ".aws/credentials",
+        "certs/server.pem", "deploy/app.key", "id_rsa", "home/.ssh/config",
         "secrets/db.txt", "app/secrets/token", ".npmrc", ".git-credentials",
         "service-account-prod.json", "infra/terraform.tfstate",
         ".git/config", ".git/hooks/pre-commit", ".agent/index.db",

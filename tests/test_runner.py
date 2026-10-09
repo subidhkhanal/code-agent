@@ -34,8 +34,8 @@ def test_environment_is_allowlisted(tmp_path: Path, monkeypatch):
     )
     result = run_command([PY, "-c", code], tmp_path)
     assert result.output.strip() == "None None"
-    env = scrubbed_env({"PATH": "/bin", "AWS_SECRET_ACCESS_KEY": "x", "GITHUB_TOKEN": "y"})
-    assert "PATH" in env and "AWS_SECRET_ACCESS_KEY" not in env and "GITHUB_TOKEN" not in env
+    env = scrubbed_env({"PATH": "/bin", "CLOUD_SECRET_KEY": "x", "GITHUB_TOKEN": "y"})
+    assert "PATH" in env and "CLOUD_SECRET_KEY" not in env and "GITHUB_TOKEN" not in env
 
 
 def test_timeout_kills_the_process(tmp_path: Path):

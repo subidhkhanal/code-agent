@@ -32,7 +32,7 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?"
         r"(?:-----END (?:[A-Z]+ )?PRIVATE KEY-----|\Z)"
     )),
-    ("aws_access_key", re.compile(r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA)[0-9A-Z]{16}\b")),
+    ("cloud_access_key", re.compile(r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA)[0-9A-Z]{16}\b")),
     ("github_token", re.compile(
         r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b"
     )),
