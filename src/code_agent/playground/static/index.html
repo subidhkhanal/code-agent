@@ -122,6 +122,7 @@
   .badge.bad { color: var(--bad); border-color: var(--bad); }
   .badge.warn { color: var(--warn); border-color: var(--warn); }
   .meta { color: var(--muted); font: 12.5px/1.4 "JetBrains Mono", monospace; }
+  .answer code { font-size: 12.5px; background: var(--panel-2); padding: 1px 5px; border-radius: 5px; }
   .answer { white-space: pre-wrap; font-size: 14px; margin: 8px 0 12px; overflow-wrap: anywhere; }
   .diff { margin: 0; border: 1px solid var(--line); border-radius: 9px; overflow: auto; font-size: 12.5px;
           line-height: 1.5; padding: 8px 0; background: var(--panel); max-height: 520px; }
@@ -359,6 +360,17 @@
     }
   }
 
+  // Minimal markdown for the model's prose: **bold** and `code` only, built as DOM nodes
+  // (never innerHTML), so model output can't inject markup.
+  function renderProse(target, text) {
+    target.textContent = "";
+    for (const part of text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/)) {
+      if (part.startsWith("**") && part.endsWith("**") && part.length > 4) target.append(el("strong", "", part.slice(2, -2)));
+      else if (part.startsWith("`") && part.endsWith("`") && part.length > 2) target.append(el("code", "", part.slice(1, -1)));
+      else target.append(document.createTextNode(part));
+    }
+  }
+
   // -- result ---------------------------------------------------------------------------------
   function showResult(r) {
     $("result").hidden = false;
@@ -380,7 +392,7 @@
         if (part) checks.append(el("span", "badge " + (/( ok|now pass)$/.test(part) ? "ok" : "warn"), part));
       }
     }
-    $("answer").textContent = r.explanation || r.message;
+    renderProse($("answer"), r.explanation || r.message);
     const diff = $("diff");
     diff.textContent = "";
     diff.hidden = !r.diff;
