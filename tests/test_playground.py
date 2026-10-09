@@ -5,6 +5,8 @@ Model calls are scripted (FakeProvider), so these tests spend nothing."""
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -244,3 +246,39 @@ def test_proxy_hops_pick_the_address_the_proxy_saw(tmp_path: Path):
     # A different spoofed left-most entry doesn't buy another run: the proxy-added one counts.
     again = {"X-Forwarded-For": "2.2.2.2, 198.51.100.4"}
     assert c.get("/api/status", headers=again).json()["runs_left"] == 0
+
+
+# -- key protection ------------------------------------------------------------------------------
+
+
+def test_key_is_read_from_the_handoff_pipe(monkeypatch):
+    from code_agent.playground.__main__ import KEY_ENV, _read_key
+
+    monkeypatch.delenv(KEY_ENV, raising=False)
+    read_end, write_end = os.pipe()
+    os.write(write_end, b"sk-ant-test-handoff\n")
+    os.close(write_end)
+    assert _read_key(read_end) == "sk-ant-test-handoff"
+    monkeypatch.setenv(KEY_ENV, "from-env")
+    assert _read_key(None) == "from-env" and KEY_ENV not in os.environ  # popped after reading
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="prctl is Linux-only")
+def test_undumpable_server_hides_its_environment_from_same_user_processes():
+    """What a model-written test would try: read the server's environment via /proc."""
+    import subprocess
+
+    child = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time; from code_agent.playground.__main__ import _make_undumpable; "
+         "_make_undumpable(); print('ready', flush=True); time.sleep(30)"],
+        env={**os.environ, "PLAYGROUND_FAKE_SECRET": "s3cr3t-value"},
+        stdout=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        assert child.stdout is not None and child.stdout.readline().strip() == "ready"
+        with pytest.raises(PermissionError):
+            Path(f"/proc/{child.pid}/environ").read_bytes()
+    finally:
+        child.kill()
+        child.wait()
