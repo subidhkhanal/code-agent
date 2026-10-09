@@ -20,7 +20,7 @@ reproducible; everything else is the real CLI with real ruff, pyright and pytest
 ## Contents
 
 - [What it does](#what-it-does) · [Architecture](#architecture) · [Design decisions](#design-decisions)
-- [Evaluation](#evaluation) · [Security](#security) · [Install and use](#install-and-use)
+- [Evaluation](#evaluation) · [Security](#security) · [Hosted playground](#hosted-playground) · [Install and use](#install-and-use)
 - [Configuration](#configuration) · [Limitations](#limitations) · [Scaling to production](#scaling-to-production)
 
 ## What it does
@@ -34,6 +34,7 @@ reproducible; everything else is the real CLI with real ruff, pyright and pytest
 | `agent audit` | Every tool call and user action of a task, with redacted arguments. |
 | `agent run --headless --auto-approve` | One task, no human, inside a container only. Writes `patch.diff` and `report.json`. |
 | `agent models` | Lists the models your key can use and checks the configured ones. |
+| `python -m code_agent.playground` | The hosted web playground: visitors run the agent on sample repos from a browser ([docs](docs/playground.md)). |
 
 ## Architecture
 
@@ -44,7 +45,7 @@ flowchart LR
     L --> R[Retrieval<br/>symbol + BM25 + vector, RRF<br/>symbol expansion · token budget]
     R --> IX[(Local index<br/>SQLite FTS5 + sqlite-vec)]
     L --> G[LLM gateway<br/>role routing · retries · fallback<br/>secret redaction · cost]
-    G --> P[(Gemini API)]
+    G --> P[(Claude API<br/>or Gemini API)]
     L --> T[Tools<br/>read · search · definitions<br/>references · commands]
     T --> AP{Approval policy<br/>in code}
     L --> FA[Fast Apply<br/>parse stream · base-hash check<br/>exact → whitespace → fuzzy · unique]
@@ -93,6 +94,7 @@ sequenceDiagram
 | Model routing by role; budgets enforced in code; unknown prices stay unknown | [0008](docs/adr/0008-model-routing-and-budgets.md) |
 | Headless only in containers, behind an allowlisting egress proxy | [0009](docs/adr/0009-headless-docker-mode.md) |
 | Symbol expansion from the index; references via jedi | [0010](docs/adr/0010-symbol-resolution.md) |
+| Hosted playground on Claude: spend limits and API-key protection in code | [0011](docs/adr/0011-hosted-playground.md) |
 
 ## Evaluation
 
@@ -211,11 +213,25 @@ The controls in brief (details in [ADR 0007](docs/adr/0007-approvals-capabilitie
   repo (590 files) the scanner has zero false positives.
 - **Audit:** every tool call and user action is recorded.
 
+## Hosted playground
+
+A web UI in front of the same engine, so people can try the agent without installing anything
+([docs/playground.md](docs/playground.md), [ADR 0011](docs/adr/0011-hosted-playground.md)).
+Visitors pick one of four small sample repos (three with real bugs, one full of prompt-injection
+traps), describe a task, and watch retrieval, tool calls, blocked commands, edits and shadow
+validation stream in, ending with a validated diff.
+
+It runs on one shared server with the owner's API key, so the limits are in code: a global daily
+budget with per-run reservations, a per-run cost cap, a few runs per visitor per day, and only
+test/lint commands allowed. The key never sits in the server's environment (it is handed over
+through a pipe), the server process is non-dumpable so the tests it runs can't read its memory,
+and every byte sent to the browser is scrubbed of it.
+
 ## Install and use
 
 ```bash
 pipx install .                       # or: python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-export GEMINI_API_KEY=...            # PowerShell: $env:GEMINI_API_KEY = "..."
+export ANTHROPIC_API_KEY=...         # or GEMINI_API_KEY; PowerShell: $env:ANTHROPIC_API_KEY = "..."
 agent models                         # pick models, then configure them (below)
 cd your-repo
 agent index                          # first run downloads the embedding model once (~70 MB)
@@ -231,13 +247,19 @@ itself can't change configuration; a cloned repo is untrusted. Every key is vali
 unknown keys are errors.
 
 ```toml
-[llm.routes]                     # no model names are built in; checked against the provider
-cheap  = ["gemini:gemini-3.5-flash-lite"]
-strong = ["gemini:gemini-3.8-flash", "gemini:gemini-3.5-flash"]   # later entries = fallbacks
+[llm.providers.anthropic]        # or kind = "gemini" (GEMINI_API_KEY)
+kind = "anthropic"               # official SDK; key from ANTHROPIC_API_KEY
+effort = "medium"
 
-[llm.pricing."gemini:gemini-3.8-flash"]   # optional; without it cost is reported as unknown
-input_per_mtok = 0.75
-output_per_mtok = 3.75
+[llm.routes]                     # no model names are built in; checked against the provider
+cheap  = ["anthropic:claude-opus-5-5"]
+strong = ["anthropic:claude-opus-5-5"]   # add more entries for fallbacks
+
+[llm.pricing."anthropic:claude-opus-5-5"]   # optional; without it cost is reported as unknown
+input_per_mtok = 4.0
+output_per_mtok = 20.0
+cache_read_per_mtok = 0.20       # prompt caching is on for Claude
+cache_write_per_mtok = 5.0
 
 [budgets]            # enforced in code before every model and tool call
 max_usd = 1.0
