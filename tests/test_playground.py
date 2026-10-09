@@ -170,6 +170,7 @@ def test_run_fixes_the_sample_validates_and_cleans_up(tmp_path: Path, monkeypatc
     assert done["status"] == "SUCCEEDED" and done["files_changed"] == ["auth/tokens.py"]
     assert "+        return token.expires_at > time.time()" in done["diff"]
     assert done["validation"]["ok"] and done["validation"]["fixed"]
+    assert done["explanation"] == "Compare with the current time."  # edit blocks stripped
     pytest_runs = [e for e in events if e["type"] == "approval"]
     assert pytest_runs and all(e["allowed"] for e in pytest_runs)
     assert cost is not None and cost > 0

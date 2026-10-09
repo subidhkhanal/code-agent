@@ -15,6 +15,7 @@ The engine is the same one `agent chat` uses. What differs is policy, all enforc
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -49,6 +50,8 @@ from code_agent.security.commands import Category
 from code_agent.workspace import Workspace, run_git
 
 SAMPLES_DIR = Path(__file__).parent / "samples"
+# A path line followed by one SEARCH/REPLACE block; the diff already shows these.
+_EDIT_BLOCK = re.compile(r"^[^\n]*\n<<<<<<< SEARCH\n.*?^>>>>>>> REPLACE[^\n]*\n?", re.M | re.S)
 
 Emit = Callable[[dict], None]
 
@@ -165,6 +168,11 @@ def event_dict(event: AgentEvent) -> dict | None:
     return None
 
 
+def explanation(answer: str) -> str:
+    """The model's prose without its edit blocks."""
+    return re.sub(r"\n{3,}", "\n\n", _EDIT_BLOCK.sub("", answer)).strip()
+
+
 def _git_init(root: Path) -> None:
     ident = ["-c", "user.name=playground", "-c", "user.email=playground@localhost",
              "-c", "commit.gpgsign=false"]  # fmt: skip
@@ -238,6 +246,7 @@ def run_task(
             "status": result.status.value,
             "message": result.message,
             "answer": result.answer,
+            "explanation": explanation(result.answer),
             "diff": plan_diff(result.plan) if result.plan else "",
             "files_changed": sorted(result.plan.changes) if result.plan else [],
             "validation": validation_dict(result.validation),

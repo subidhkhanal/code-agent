@@ -362,7 +362,7 @@
         if (part) checks.append(el("span", "badge " + (/( ok|now pass)$/.test(part) ? "ok" : "warn"), part));
       }
     }
-    $("answer").textContent = r.message + (r.answer && !r.diff ? "\n\n" + r.answer : "");
+    $("answer").textContent = r.explanation || r.message;
     const diff = $("diff");
     diff.textContent = "";
     diff.hidden = !r.diff;
