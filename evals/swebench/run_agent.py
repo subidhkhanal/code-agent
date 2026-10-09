@@ -64,7 +64,7 @@ def run_instance(inst: dict, out: Path, config: Path, cfg: SandboxConfig, timeou
         "--cpus", "2", "--memory", "6g", "--pids-limit", "2048",
         "--tmpfs", "/tmp:rw,exec,size=4g",
         "-e", f"HTTPS_PROXY={proxy}", "-e", f"https_proxy={proxy}",
-        "-e", "NO_PROXY=localhost,127.0.0.1", "-e", cfg.api_key_env,
+        "-e", "NO_PROXY=localhost,127.0.0.1", *[a for n in cfg.api_key_envs for a in ("-e", n)],
         "-v", f"{out.resolve()}:/out", "-v", f"{task_dir.resolve()}:/task:ro",
         "-v", f"{config.resolve()}:/config/agent.toml:ro",
         "--entrypoint", "/opt/agent/entrypoint.sh", inst["image"],

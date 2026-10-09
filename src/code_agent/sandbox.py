@@ -33,8 +33,10 @@ class SandboxConfig:
     network: str = "code-agent-internal"
     proxy_name: str = "code-agent-egress"
     proxy_port: int = 3128
-    allow: tuple[str, ...] = ("generativelanguage.googleapis.com:443",)
-    api_key_env: str = "GEMINI_API_KEY"
+    # The model APIs the agent may reach; nothing else gets through the egress proxy.
+    allow: tuple[str, ...] = ("api.anthropic.com:443", "generativelanguage.googleapis.com:443")
+    # Passed through by name only (`-e NAME`): unset ones pass nothing, values never hit argv.
+    api_key_envs: tuple[str, ...] = ("ANTHROPIC_API_KEY", "GEMINI_API_KEY")
     cpus: str = "2"
     memory: str = "4g"
     pids_limit: int = 512
@@ -87,7 +89,8 @@ def agent_run_args(
         "--cpus", cfg.cpus, "--memory", cfg.memory, "--pids-limit", str(cfg.pids_limit),
         "--security-opt", "no-new-privileges",
         "-e", f"HTTPS_PROXY={proxy}", "-e", f"https_proxy={proxy}",
-        "-e", "NO_PROXY=localhost,127.0.0.1", "-e", cfg.api_key_env,
+        "-e", "NO_PROXY=localhost,127.0.0.1",
+        *[arg for name in cfg.api_key_envs for arg in ("-e", name)],
         "-v", f"{out_dir.resolve()}:/out",
     ]  # fmt: skip
     if mount_repo:
