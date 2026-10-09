@@ -43,7 +43,10 @@ jobs:
           import os
           from huggingface_hub import HfApi
 
-          HfApi(token=os.environ["HF_TOKEN"]).upload_folder(
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.create_repo(os.environ["HF_SPACE"], repo_type="space", space_sdk="docker",
+                          exist_ok=True)
+          api.upload_folder(
               repo_id=os.environ["HF_SPACE"],
               repo_type="space",
               folder_path=os.path.join(os.environ["RUNNER_TEMP"], "space"),

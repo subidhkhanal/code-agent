@@ -45,17 +45,17 @@ One-time setup:
 
 1. **API key.** In the Claude Console, create a key for the playground and set a monthly spend
    limit on its workspace (for example USD 20). This is the hard stop if anything else fails.
-2. **Space.** On huggingface.co, create a Space: SDK *Docker*, template *Blank*, hardware
-   *CPU basic (free)*, visibility *Public*.
-3. **Secret.** In the Space's *Settings → Variables and secrets*, add a **secret** named
-   `ANTHROPIC_API_KEY`. Paste the key there and nowhere else.
-4. **Automatic deploys.** Create a Hugging Face access token with *write* access. In the GitHub
-   repo's *Settings → Secrets and variables → Actions*, add the secret `HF_TOKEN` (the token) and
-   the variable `HF_SPACE` (for example `your-name/code-agent`).
+2. **Deploy access.** Create a Hugging Face access token with *write* access. In the GitHub
+   repo's *Settings → Secrets and variables → Actions*, add the secret `HF_TOKEN` (the token)
+   and the variable `HF_SPACE` (for example `your-name/code-agent`).
+3. **First deploy.** Run the *Playground* workflow from the Actions tab (or push to `main`). It
+   creates the Space (Docker, free CPU tier) if it doesn't exist and uploads the build folder.
+4. **Secret.** In the Space's *Settings → Variables and secrets*, add a **secret** named
+   `ANTHROPIC_API_KEY`. Paste the key there and nowhere else. The Space restarts with it.
 
 From then on, every push to `main` that passes CI redeploys the Space
-([`.github/workflows/playground.yml`](../.github/workflows/playground.yml)). The first build
-takes about five minutes.
+([`.github/workflows/playground.yml`](../.github/workflows/playground.yml)). A build takes
+about five minutes.
 
 After the first deploy, check that per-visitor limits see real addresses: the runs-left counter
 must drop for you after a run, and must not drop when you send a request with a made-up
