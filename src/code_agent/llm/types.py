@@ -51,12 +51,17 @@ class ToolCallEvent:
 
 @dataclass(frozen=True)
 class Usage:
-    input_tokens: int = 0
+    input_tokens: int = 0  # all prompt tokens, including the cached ones below
     output_tokens: int = 0
+    cache_read_tokens: int = 0  # part of input_tokens served from the provider's prompt cache
+    cache_write_tokens: int = 0  # part of input_tokens written to the prompt cache
 
     def __add__(self, other: Usage) -> Usage:
         return Usage(
-            self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens
+            self.input_tokens + other.input_tokens,
+            self.output_tokens + other.output_tokens,
+            self.cache_read_tokens + other.cache_read_tokens,
+            self.cache_write_tokens + other.cache_write_tokens,
         )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from code_agent.config import LLMConfig
+from code_agent.llm.claude import AnthropicProvider
 from code_agent.llm.gateway import Gateway, Price, RetryPolicy, Route
 from code_agent.llm.providers import FakeProvider, GeminiProvider, Provider
 from code_agent.llm.types import Request
@@ -15,7 +16,20 @@ def build_providers(cfg: LLMConfig) -> dict[str, Provider]:
     for name, p in cfg.providers.items():
         if p.kind == "gemini":
             providers[name] = GeminiProvider(
-                api_key_env=p.api_key_env, base_url=p.base_url, timeout_s=p.timeout_s, name=name
+                api_key_env=p.api_key_env or "GEMINI_API_KEY",
+                base_url=p.base_url or GeminiProvider.base_url,
+                timeout_s=p.timeout_s,
+                name=name,
+            )
+        elif p.kind == "anthropic":
+            providers[name] = AnthropicProvider(
+                api_key_env=p.api_key_env or "ANTHROPIC_API_KEY",
+                base_url=p.base_url,
+                timeout_s=p.timeout_s,
+                effort=p.effort,
+                refusal_fallback=p.refusal_fallback,
+                drop_mismatched_thinking=p.drop_mismatched_thinking,
+                name=name,
             )
         elif p.kind == "fake":
             if p.script is None:
@@ -34,7 +48,10 @@ def build_gateway(
         providers=providers if providers is not None else build_providers(cfg),
         routes={role: [Route.parse(s) for s in specs] for role, specs in cfg.routes.items()},
         prices={
-            spec: Price(p.input_per_mtok, p.output_per_mtok) for spec, p in cfg.pricing.items()
+            spec: Price(
+                p.input_per_mtok, p.output_per_mtok, p.cache_read_per_mtok, p.cache_write_per_mtok
+            )
+            for spec, p in cfg.pricing.items()
         },
         retry=RetryPolicy(cfg.max_attempts, cfg.base_delay_s, cfg.max_delay_s),
         outbound_filter=outbound_filter,

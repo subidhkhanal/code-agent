@@ -54,6 +54,7 @@ class FakeTurn:
     tool_calls: tuple[ToolCall, ...] = ()
     usage: Usage = field(default_factory=lambda: Usage(1000, 200))
     error: ProviderError | None = None  # raise this instead of answering
+    stop_reason: str | None = None  # override, e.g. "refusal"
 
 
 FakeScriptItem = FakeTurn | Callable[[Request], FakeTurn]
@@ -107,7 +108,8 @@ class FakeProvider:
             yield TextDelta(turn.text[i : i + self.chunk_size])
         for call in turn.tool_calls:
             yield ToolCallEvent(call)
-        yield Done("tool_calls" if turn.tool_calls else "STOP", turn.usage)
+        stop = turn.stop_reason or ("tool_calls" if turn.tool_calls else "STOP")
+        yield Done(stop, turn.usage)
 
     def list_models(self) -> list[ModelInfo]:
         return list(self.models)

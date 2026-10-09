@@ -58,10 +58,24 @@ class Route:
 class Price:
     input_per_mtok: float  # USD per million input tokens
     output_per_mtok: float
+    # Prompt-cache rates. Unset: reads are charged as normal input and writes at 1.25x input,
+    # so an unconfigured cache price can only overstate the cost, never understate it.
+    cache_read_per_mtok: float | None = None
+    cache_write_per_mtok: float | None = None
 
     def cost(self, usage: Usage) -> float:
+        read = self.input_per_mtok if self.cache_read_per_mtok is None else self.cache_read_per_mtok
+        write = (
+            self.input_per_mtok * 1.25
+            if self.cache_write_per_mtok is None
+            else self.cache_write_per_mtok
+        )
+        uncached = usage.input_tokens - usage.cache_read_tokens - usage.cache_write_tokens
         return (
-            usage.input_tokens * self.input_per_mtok + usage.output_tokens * self.output_per_mtok
+            uncached * self.input_per_mtok
+            + usage.cache_read_tokens * read
+            + usage.cache_write_tokens * write
+            + usage.output_tokens * self.output_per_mtok
         ) / 1_000_000
 
 

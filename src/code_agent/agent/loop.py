@@ -179,6 +179,7 @@ class _Turn:
     blocks: list[EditBlock] = field(default_factory=list)
     parse_errors: list[ParseError] = field(default_factory=list)
     provider_state: dict | None = None
+    stop_reason: str = ""
 
 
 _QUERY_LINE = re.compile(r"^\s*(?:[-*]|\d+[.)])?\s*")
@@ -252,6 +253,13 @@ class AgentLoop:
                 )
             )
             result.answer = turn.text
+
+            if turn.stop_reason == "refusal":
+                # A safety decline (after any provider-side fallback). Partial output is not
+                # trusted: no edits from this turn are planned.
+                result.status = TaskStatus.FAILED
+                result.message = "the model declined this request"
+                return
 
             if turn.tool_calls:
                 for call in turn.tool_calls:
@@ -380,6 +388,7 @@ class AgentLoop:
                 turn.tool_calls.append(event.call)
             elif isinstance(event, Done):
                 turn.provider_state = event.provider_state
+                turn.stop_reason = event.stop_reason
         handle(parser.finish())
         meter.add_call(self.gateway)
         turn.text = "".join(parts)

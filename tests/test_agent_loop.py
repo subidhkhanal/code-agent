@@ -212,6 +212,13 @@ def test_prose_answer_without_edits(indexed: IndexedRepo):
     assert "compares with 0" in result.answer
 
 
+def test_refusal_ends_the_task_without_planning_partial_edits(indexed: IndexedRepo):
+    h = Harness(indexed, [REWRITE, FakeTurn(FIX_REPLY, stop_reason="refusal")])
+    result = h.run()
+    assert result.status is TaskStatus.FAILED and result.plan is None
+    assert result.message == "the model declined this request"
+
+
 def test_blocks_sent_with_tool_calls_are_ignored_until_resent(indexed: IndexedRepo):
     mixed = FakeTurn(FIX_REPLY, (ToolCall("c", "read_file", {"path": "auth/tokens.py"}),))
     h = Harness(indexed, [REWRITE, mixed, FakeTurn(FIX_REPLY)])

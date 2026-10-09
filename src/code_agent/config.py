@@ -76,20 +76,42 @@ class RetrievalConfig(_Strict):
 
 
 class ProviderConfig(_Strict):
-    kind: Literal["gemini", "fake"] = "gemini"
-    api_key_env: str = Field(
-        default="GEMINI_API_KEY", description="Name of the env var holding the key (not the key)"
+    kind: Literal["gemini", "anthropic", "fake"] = "gemini"
+    api_key_env: str | None = Field(
+        default=None,
+        description="Name of the env var holding the key (not the key). Default: GEMINI_API_KEY "
+        "for gemini, ANTHROPIC_API_KEY for anthropic.",
     )
-    base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    base_url: str | None = Field(default=None, description="Override the provider's API URL")
     timeout_s: float = Field(default=120.0, gt=0)
     script: Path | None = Field(
         default=None, description="kind='fake' only: JSON file of scripted turns (demos, CI)"
+    )
+    # kind='anthropic' only. Defaults suit the current Claude models (see docs/adr/0011).
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = Field(
+        default=None, description="anthropic: output_config.effort (None = the model's default)"
+    )
+    refusal_fallback: bool = Field(
+        default=True,
+        description="anthropic: let the API re-run a safety-declined request on its "
+        "recommended fallback model instead of returning the refusal",
+    )
+    drop_mismatched_thinking: bool = Field(
+        default=True,
+        description="anthropic: when history trimming changes the conversation prefix, drop "
+        "the invalidated thinking blocks instead of failing the request",
     )
 
 
 class PriceConfig(_Strict):
     input_per_mtok: float = Field(ge=0, description="USD per million input tokens")
     output_per_mtok: float = Field(ge=0, description="USD per million output tokens")
+    cache_read_per_mtok: float | None = Field(
+        default=None, ge=0, description="Prompt-cache reads (unset: charged as normal input)"
+    )
+    cache_write_per_mtok: float | None = Field(
+        default=None, ge=0, description="Prompt-cache writes (unset: 1.25x input)"
+    )
 
 
 class LLMConfig(_Strict):
