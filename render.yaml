@@ -16,5 +16,8 @@ services:
       # address, so visitors can't spoof their identity for the per-visitor limit.
       - key: PLAYGROUND_CLIENT_IP_HEADER
         value: cf-connecting-ip
+      # The UI is also served by GitHub Pages and calls this API from there.
+      - key: PLAYGROUND_CORS_ORIGINS
+        value: https://subidhkhanal.github.io
       - key: PLAYGROUND_PROXY_HOPS
         value: "1"

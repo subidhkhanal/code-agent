@@ -136,7 +136,7 @@
     runs the same engine in a locked-down container.
   </p>
   <div class="cta">
-    <a class="btn primary" href="https://code-agent-playground.onrender.com/">Try it live in your browser</a>
+    <a class="btn primary" href="#playground">Try it live in your browser</a>
     <a class="btn" href="https://github.com/subidhkhanal/code-agent">View on GitHub</a>
     <a class="btn" href="https://github.com/subidhkhanal/code-agent/tree/main/docs/adr">Design decisions (11 ADRs)</a>
   </div>
@@ -147,6 +147,35 @@
     <span class="chip">GitHub Actions</span>
   </div>
 </header>
+
+<section id="playground">
+  <div class="wrap">
+    <h2>Try it live</h2>
+    <p class="sub">Pick a sample repo, give the agent a task, and watch it work: the real agent on
+      Claude, with real ruff and pytest, no install and no key needed. Each visitor gets a few runs
+      a day. <a href="playground/">Open it full screen</a>.</p>
+    <iframe id="pg" src="playground/" title="code-agent playground"
+      style="display:block;width:100%;height:960px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg)"></iframe>
+  </div>
+</section>
+<script>
+  // The playground reports its height so it fits without an inner scrollbar, and follows this
+  // page's theme toggle.
+  (() => {
+    const frame = document.getElementById("pg");
+    const sendTheme = () => {
+      const t = document.documentElement.dataset.theme;
+      if (t) frame.contentWindow?.postMessage({ type: "theme", theme: t }, location.origin);
+    };
+    window.addEventListener("message", (e) => {
+      if (e.source === frame.contentWindow && e.data?.type === "playground-height") {
+        frame.style.height = Math.max(600, Math.ceil(e.data.height) + 4) + "px";
+      }
+    });
+    frame.addEventListener("load", sendTheme);
+    new MutationObserver(sendTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  })();
+</script>
 
 <section id="demo">
   <div class="wrap">
@@ -309,7 +338,7 @@ flowchart LR
 <section id="try">
   <div class="wrap">
     <h2>Try it</h2>
-    <p class="sub"><strong><a href="https://code-agent-playground.onrender.com/">Run it in your browser</a></strong> on a sample repo: no install, no key.
+    <p class="sub"><strong><a href="#playground">Run it in your browser</a></strong> on a sample repo: no install, no key.
       It runs the real agent on Claude, with a small daily budget, so each visitor gets a few runs a day.
       The first visit after a quiet spell can take a minute or two while the free server wakes up.</p>
     <p class="sub">Or install the CLI. Needs Python 3.12 and a Claude (or Gemini) API key. Config lives in your home directory, never in the repo.</p>

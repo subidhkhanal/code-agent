@@ -2,9 +2,7 @@
 
 [![CI](https://github.com/subidhkhanal/code-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/subidhkhanal/code-agent/actions/workflows/ci.yml)
 
-**Try it live in your browser (no install, no key): https://code-agent-playground.onrender.com/**
-
-Project page: https://subidhkhanal.github.io/code-agent/
+**Project page, with a live playground (no install, no key): https://subidhkhanal.github.io/code-agent/**
 
 A terminal coding agent for Python repositories. It indexes your repo locally, finds the code a
 request is about, and has an LLM propose focused edits. Every edit is checked before you see

@@ -299,3 +299,23 @@ def test_undumpable_server_hides_its_environment_from_same_user_processes():
     finally:
         child.kill()
         child.wait()
+
+
+def test_cors_allows_only_the_configured_ui_origin(tmp_path: Path):
+    c = client(tmp_path, [], cors_origins=("https://subidhkhanal.github.io",))
+    ok = c.get("/api/status", headers={"Origin": "https://subidhkhanal.github.io"})
+    assert ok.headers.get("access-control-allow-origin") == "https://subidhkhanal.github.io"
+    other = c.get("/api/status", headers={"Origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in other.headers
+    preflight = c.options("/api/run", headers={
+        "Origin": "https://subidhkhanal.github.io",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+    })  # fmt: skip
+    assert preflight.status_code == 200
+    assert (
+        client(tmp_path, [])
+        .get("/api/status", headers={"Origin": "https://subidhkhanal.github.io"})
+        .headers.get("access-control-allow-origin")
+        is None
+    )  # off unless configured

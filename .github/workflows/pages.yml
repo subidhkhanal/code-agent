@@ -3,7 +3,8 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["site/**", "docs/demo/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/demo/**", "src/code_agent/playground/static/**",
+            ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -24,10 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Assemble site
+        env:
+          # The playground's backend (render.yaml); the UI below calls it from this site.
+          PLAYGROUND_API: https://code-agent-playground.onrender.com/
         run: |
-          mkdir -p _site/demo
+          mkdir -p _site/demo _site/playground
           cp -r site/. _site/
           cp docs/demo/*.gif _site/demo/
+          sed 's|<meta name="playground-api" content="">|<meta name="playground-api" content="'"$PLAYGROUND_API"'">|' \
+            src/code_agent/playground/static/index.html > _site/playground/index.html
+          grep -q "content=\"$PLAYGROUND_API\"" _site/playground/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

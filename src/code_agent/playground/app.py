@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -59,6 +60,8 @@ class Settings:
     client_ip_header: str = ""
     proxy_hops: int = 0
     state_dir: Path = field(default_factory=lambda: Path.home() / ".cache" / "code-agent")
+    # Other sites allowed to call the API from a browser (the UI hosted on GitHub Pages).
+    cors_origins: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -74,6 +77,7 @@ class Settings:
             client_ip_header=_env("CLIENT_IP_HEADER", d.client_ip_header).lower(),
             proxy_hops=int(_env("PROXY_HOPS", str(d.proxy_hops))),
             state_dir=Path(_env("STATE_DIR", str(d.state_dir))),
+            cors_origins=tuple(o.strip() for o in _env("CORS_ORIGINS", "").split(",") if o.strip()),
         )
 
     @property
@@ -111,6 +115,13 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="code-agent playground", docs_url=None, redoc_url=None)
     app.state.workers = set()  # keeps run futures referenced until they finish
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type"],
+        )
     samples: dict[str, Sample] = load_samples()
     scrub = make_scrubber(server_secrets)
     guard = guard or SpendGuard(
