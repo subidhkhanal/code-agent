@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>code-agent playground</title>
+<title>code-agent: try a coding agent that checks its own edits</title>
+<meta property="og:title" content="code-agent">
+<meta property="og:description" content="Run a coding agent in your browser: it finds the bug, edits the code, and proves the fix with lint and tests.">
 <!-- Where the API lives. Empty: same origin. The GitHub Pages build points it at the backend. -->
 <meta name="playground-api" content="">
 <meta name="description" content="Run a coding agent on a small buggy repo from your browser: it searches the code, edits it, and validates the edit with lint and tests before showing you the diff.">
@@ -50,6 +52,8 @@
     nav .links .pill { margin-right: auto; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   }
   main { max-width: 1280px; margin: 0 auto; padding: 22px 16px 60px; }
+  .title { font-size: clamp(26px, 3.6vw, 38px); line-height: 1.15; letter-spacing: -.02em; margin: 6px 0 10px; }
+  .title span { color: var(--accent); }
   .intro { color: var(--muted); max-width: 860px; margin: 0 0 20px; }
   .intro strong { color: var(--text); }
   .grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 18px; align-items: start; }
@@ -125,22 +129,21 @@
   .diff .a { background: var(--add-bg); } .diff .d { background: var(--del-bg); }
   .diff .h { color: var(--accent-2); } .diff .f { color: var(--muted); font-weight: 600; }
   .checks { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
-  .embedded nav, .embedded footer, .embedded .intro { display: none; }
-  .embedded main { padding: 0; }
   footer { max-width: 1280px; margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
 <nav><div class="in">
-  <a class="brand" href="./">code-agent <span>/ playground</span></a>
+  <a class="brand" href="./">code-agent</a>
   <div class="links">
     <span class="pill" id="pill">loading…</span>
-    <a href="https://subidhkhanal.github.io/code-agent/">Project</a>
+    <a href="https://github.com/subidhkhanal/code-agent#readme">How it works</a>
     <a href="https://github.com/subidhkhanal/code-agent">GitHub</a>
   </div>
 </div></nav>
 
 <main>
+  <h1 class="title">A coding agent that <span>checks its own edits</span>. Try it.</h1>
   <p class="intro">Pick a small buggy repo, describe a fix, and watch the agent work on it. It
     <strong>searches the code</strong>, <strong>proposes edits</strong>, and
     <strong>validates them</strong> in a throwaway copy (lint and the repo's own tests) before
@@ -210,8 +213,6 @@
   };
   const metaApi = document.querySelector('meta[name="playground-api"]')?.content || "";
   const API = metaApi && !metaApi.endsWith("/") ? metaApi + "/" : metaApi;
-  const embedded = window.self !== window.top;
-  if (embedded) document.documentElement.classList.add("embedded");
   const state = { sample: null, samples: [], files: {}, running: false, controller: null, status: null };
 
   // -- status ---------------------------------------------------------------------------------
@@ -230,7 +231,12 @@
       else if (!s.budget_open) showNotice("Today's playground budget is used up. It resets at 00:00 UTC.");
       $("task").maxLength = s.max_task_chars;
       updateCount();
-    } catch { clearTimeout(slow); $("pill").textContent = "offline"; }
+    } catch {
+      clearTimeout(slow);
+      $("pill").textContent = "offline";
+      showNotice("Couldn't reach the playground server. It may be starting up; this page retries on its own.");
+      setTimeout(refreshStatus, 15000);
+    }
   }
   function showNotice(text) { const n = $("notice"); n.textContent = text; n.style.display = text ? "block" : "none"; }
 
@@ -306,7 +312,7 @@
     if (sub) tx.append(el("span", "sub", sub));
     li.append(tx);
     $("timeline").append(li);
-    if (!embedded) li.scrollIntoView({ block: "nearest" });
+    li.scrollIntoView({ block: "nearest" });
     return li;
   }
   const code = (t) => el("code", "", t);
@@ -442,20 +448,13 @@
   $("stop").addEventListener("click", () => state.controller?.abort());
   $("task").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) run(); });
 
-  if (embedded) {
-    // Let the host page size the iframe to fit, so there is no inner scrollbar.
-    const post = () => window.parent.postMessage(
-      { type: "playground-height", height: document.documentElement.scrollHeight }, "*");
-    new ResizeObserver(post).observe(document.body);
-    window.addEventListener("message", (e) => {
-      if (e.source === window.parent && e.data?.type === "theme") {
-        document.documentElement.dataset.theme = e.data.theme;
-      }
-    });
+  async function start(attempt = 0) {
+    try { await loadSamples(); }
+    catch { if (attempt < 10) setTimeout(() => start(attempt + 1), 15000); }
   }
 
   refreshStatus();
-  loadSamples();
+  start();
 })();
 </script>
 </body>
