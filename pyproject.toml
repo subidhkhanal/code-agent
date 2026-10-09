@@ -50,7 +50,8 @@ packages = ["src/code_agent"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-extend-exclude = ["tests/fixtures"]  # fixture repos are test *data*, including deliberate bugs
+# Fixture and sample repos are *data*, including deliberate bugs.
+extend-exclude = ["tests/fixtures", "src/code_agent/playground/samples"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
@@ -58,6 +59,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]  # allow unicode glyphs (✓, →) in UI
 
 [tool.pyright]
 include = ["src"]
+exclude = ["src/code_agent/playground/samples"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 venvPath = "."

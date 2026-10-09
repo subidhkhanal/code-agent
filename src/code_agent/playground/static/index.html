@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>code-agent playground</title>
+<meta name="description" content="Run a coding agent on a small buggy repo from your browser: it searches the code, edits it, and validates the edit with lint, type checks and tests before showing you the diff.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel-2: #1c2330; --line: #2a3340;
+    --text: #e6edf3; --muted: #9aa7b4; --accent: #58d68d; --accent-2: #5ab0ff; --warn: #f0b452;
+    --bad: #ff7b72; --add-bg: rgba(46,160,67,.16); --del-bg: rgba(248,81,73,.16);
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f7f8fa; --panel: #ffffff; --panel-2: #f1f4f8; --line: #dfe4ea;
+      --text: #111827; --muted: #5b6573; --accent: #16a34a; --accent-2: #2563eb; --warn: #b45309;
+      --bad: #cf222e; --add-bg: rgba(46,160,67,.12); --del-bg: rgba(248,81,73,.12);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f8fa; --panel: #ffffff; --panel-2: #f1f4f8; --line: #dfe4ea;
+    --text: #111827; --muted: #5b6573; --accent: #16a34a; --accent-2: #2563eb; --warn: #b45309;
+    --bad: #cf222e; --add-bg: rgba(46,160,67,.12); --del-bg: rgba(248,81,73,.12);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 Inter, system-ui, -apple-system, Segoe UI, sans-serif; }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; font-variant-ligatures: none; }
+  nav { border-bottom: 1px solid var(--line); background: var(--panel); }
+  nav .in { max-width: 1280px; margin: 0 auto; padding: 0 16px; height: 54px; display: flex;
+            align-items: center; gap: 16px; }
+  .brand { font: 700 15px/1 "JetBrains Mono", monospace; color: var(--text); }
+  .brand span { color: var(--accent); }
+  nav .links { margin-left: auto; display: flex; gap: 16px; font-size: 14px; align-items: center; }
+  nav .links a { color: var(--muted); }
+  .pill { font: 500 12.5px/1 "JetBrains Mono", monospace; border: 1px solid var(--line); border-radius: 999px;
+          padding: 7px 10px; color: var(--muted); white-space: nowrap; }
+  .pill b { color: var(--accent); font-weight: 600; }
+  @media (max-width: 620px) {
+    nav .in { height: auto; padding: 10px 16px; flex-wrap: wrap; gap: 8px; }
+    nav .links { margin-left: 0; width: 100%; gap: 12px; }
+    nav .links .pill { margin-right: auto; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  }
+  main { max-width: 1280px; margin: 0 auto; padding: 22px 16px 60px; }
+  .intro { color: var(--muted); max-width: 860px; margin: 0 0 20px; }
+  .intro strong { color: var(--text); }
+  .grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 18px; align-items: start; }
+  @media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .card + .card { margin-top: 18px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px;
+       font-family: "JetBrains Mono", monospace; font-weight: 600; }
+  h2 em { color: var(--accent); font-style: normal; }
+  .samples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 520px) { .samples { grid-template-columns: minmax(0, 1fr); } }
+  .sample { text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+            padding: 11px 12px; color: var(--text); cursor: pointer; font: inherit; }
+  .sample b { display: block; font-size: 14.5px; margin-bottom: 3px; }
+  .sample span { color: var(--muted); font-size: 13px; line-height: 1.45; display: block; }
+  .sample[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .browser { display: grid; grid-template-columns: 190px minmax(0, 1fr); border: 1px solid var(--line);
+             border-radius: 10px; overflow: hidden; margin-top: 14px; height: 430px; }
+  @media (max-width: 620px) { .browser { grid-template-columns: minmax(0, 1fr); height: auto; }
+                              .files { max-height: 140px; border-right: 0 !important; border-bottom: 1px solid var(--line); }
+                              .code { max-height: 380px; } }
+  .files { overflow: auto; background: var(--panel-2); border-right: 1px solid var(--line); padding: 6px 0; }
+  .files button { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--muted);
+                  font: 12.5px/1.3 "JetBrains Mono", monospace; padding: 6px 12px; cursor: pointer;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files button:hover { color: var(--text); }
+  .files button[aria-current="true"] { color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .code { margin: 0; overflow: auto; padding: 12px 0; font-size: 12.5px; line-height: 1.55; background: var(--panel); }
+  .code .ln { display: block; padding: 0 14px 0 0; white-space: pre; }
+  .code .ln::before { content: attr(data-n); display: inline-block; width: 40px; padding-right: 12px;
+                      text-align: right; color: var(--muted); opacity: .55; user-select: none; }
+  .tasks { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
+  .task { text-align: left; border: 1px dashed var(--line); background: none; color: var(--text); border-radius: 9px;
+          padding: 8px 11px; font: inherit; font-size: 13.5px; cursor: pointer; }
+  .task:hover { border-color: var(--accent-2); }
+  textarea { width: 100%; min-height: 92px; resize: vertical; background: var(--panel-2); color: var(--text);
+             border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; font: inherit; }
+  textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent-2) 60%, transparent); outline-offset: 1px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+  .count { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+  .btn { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 10px;
+         padding: 9px 16px; font: 600 14.5px/1 Inter, sans-serif; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #06130b; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .notice { border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 9px 12px;
+            font-size: 13.5px; margin-top: 10px; display: none; }
+  .timeline { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+  .timeline li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; padding: 5px 0;
+                 border-bottom: 1px dashed color-mix(in srgb, var(--line) 70%, transparent); }
+  .timeline li:last-child { border-bottom: 0; }
+  .timeline .ic { font-family: "JetBrains Mono", monospace; text-align: center; color: var(--muted); }
+  .timeline .ok .ic { color: var(--accent); } .timeline .bad .ic { color: var(--bad); }
+  .timeline .warn .ic { color: var(--warn); } .timeline .bad .tx { color: var(--bad); }
+  .timeline code { font-size: 12.5px; background: var(--panel-2); padding: 1px 5px; border-radius: 5px;
+                   overflow-wrap: anywhere; }
+  .timeline .sub { display: block; color: var(--muted); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .empty { color: var(--muted); font-size: 13.5px; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .stream { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; max-height: 320px; overflow: auto;
+            background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; margin: 8px 0 0; }
+  .result-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .badge { font: 600 12px/1 "JetBrains Mono", monospace; padding: 6px 9px; border-radius: 7px; border: 1px solid; }
+  .badge.ok { color: var(--accent); border-color: var(--accent); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  .meta { color: var(--muted); font: 12.5px/1.4 "JetBrains Mono", monospace; }
+  .answer { white-space: pre-wrap; font-size: 14px; margin: 8px 0 12px; overflow-wrap: anywhere; }
+  .diff { margin: 0; border: 1px solid var(--line); border-radius: 9px; overflow: auto; font-size: 12.5px;
+          line-height: 1.5; padding: 8px 0; background: var(--panel); max-height: 520px; }
+  .diff span { display: block; padding: 0 12px; white-space: pre; }
+  .diff .a { background: var(--add-bg); } .diff .d { background: var(--del-bg); }
+  .diff .h { color: var(--accent-2); } .diff .f { color: var(--muted); font-weight: 600; }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+  footer { max-width: 1280px; margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<nav><div class="in">
+  <a class="brand" href="./">code-agent <span>/ playground</span></a>
+  <div class="links">
+    <span class="pill" id="pill">loading…</span>
+    <a href="https://subidhkhanal.github.io/code-agent/">Project</a>
+    <a href="https://github.com/subidhkhanal/code-agent">GitHub</a>
+  </div>
+</div></nav>
+
+<main>
+  <p class="intro">Pick a small buggy repo, describe a fix, and watch the agent work on it. It
+    <strong>searches the code</strong>, <strong>proposes edits</strong>, and
+    <strong>validates them</strong> in a throwaway copy with lint, type checks and the repo's tests
+    before showing you the diff. Nothing it does here touches anything real.</p>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2><em>1</em> &nbsp;Pick a repo</h2>
+        <div class="samples" id="samples"></div>
+        <div class="browser">
+          <div class="files" id="files" aria-label="Files"></div>
+          <pre class="code" id="code" aria-label="File contents"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2><em>2</em> &nbsp;Give it a task</h2>
+        <div class="tasks" id="tasks"></div>
+        <label for="task" class="note" style="display:block;margin:0 0 6px">Or write your own:</label>
+        <textarea id="task" placeholder="e.g. Fix the failing test in tests/test_tokens.py"></textarea>
+        <div class="row">
+          <button class="btn primary" id="run">Run agent</button>
+          <button class="btn" id="stop" hidden>Stop</button>
+          <span class="count" id="count"></span>
+        </div>
+        <div class="notice" id="notice" role="status"></div>
+      </div>
+
+      <div class="card">
+        <h2><em>3</em> &nbsp;Watch it work</h2>
+        <p class="empty" id="empty">Events from the run appear here as they happen.</p>
+        <ul class="timeline" id="timeline"></ul>
+        <details id="raw" hidden>
+          <summary>Model output (streamed)</summary>
+          <pre class="stream" id="stream"></pre>
+        </details>
+      </div>
+
+      <div class="card" id="result" hidden>
+        <h2><em>4</em> &nbsp;Result</h2>
+        <div class="result-head" id="resultHead"></div>
+        <div class="checks" id="checks"></div>
+        <div class="answer" id="answer"></div>
+        <pre class="diff" id="diff" hidden></pre>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Runs share one server and a small daily budget, so each visitor gets a few runs per day. The model can
+  only run test and lint commands here; anything else is blocked in code, not by asking it nicely.
+  Edits are validated in a temporary copy that is deleted after the run.
+</footer>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const state = { sample: null, samples: [], files: {}, running: false, controller: null, status: null };
+
+  // -- status ---------------------------------------------------------------------------------
+  async function refreshStatus() {
+    try {
+      const s = await (await fetch("api/status")).json();
+      state.status = s;
+      const pill = $("pill");
+      pill.textContent = "";
+      pill.append(el("b", "", s.model || "model"), ` · ${s.runs_left}/${s.runs_per_day} runs left today`);
+      if (!s.available) showNotice("The model is unavailable right now. Please try again later.");
+      else if (!s.budget_open) showNotice("Today's playground budget is used up. It resets at 00:00 UTC.");
+      $("task").maxLength = s.max_task_chars;
+      updateCount();
+    } catch { $("pill").textContent = "offline"; }
+  }
+  function showNotice(text) { const n = $("notice"); n.textContent = text; n.style.display = text ? "block" : "none"; }
+
+  // -- samples and code browser ---------------------------------------------------------------
+  async function loadSamples() {
+    state.samples = await (await fetch("api/samples")).json();
+    const box = $("samples");
+    for (const s of state.samples) {
+      const b = el("button", "sample");
+      b.type = "button";
+      b.dataset.id = s.id;
+      b.append(el("b", "", s.title), el("span", "", s.blurb));
+      b.addEventListener("click", () => selectSample(s.id));
+      box.append(b);
+    }
+    selectSample(state.samples[0].id);
+  }
+
+  async function selectSample(id) {
+    if (state.running) return;
+    state.sample = state.samples.find((s) => s.id === id);
+    for (const b of $("samples").children) b.setAttribute("aria-pressed", String(b.dataset.id === id));
+    const tasks = $("tasks");
+    tasks.textContent = "";
+    for (const t of state.sample.tasks) {
+      const b = el("button", "task", t);
+      b.type = "button";
+      b.addEventListener("click", () => { $("task").value = t; updateCount(); $("task").focus(); });
+      tasks.append(b);
+    }
+    state.files = await (await fetch(`api/samples/${encodeURIComponent(id)}/files`)).json();
+    const names = Object.keys(state.files);
+    const list = $("files");
+    list.textContent = "";
+    for (const name of names) {
+      const b = el("button", "", name);
+      b.type = "button";
+      b.title = name;
+      b.addEventListener("click", () => showFile(name));
+      list.append(b);
+    }
+    const first = names.find((n) => n.endsWith(".py") && !n.startsWith("tests/") && !n.endsWith("__init__.py"))
+      || names.find((n) => n.toLowerCase() === "readme.md") || names[0];
+    showFile(first);
+  }
+
+  function showFile(name) {
+    for (const b of $("files").children) b.setAttribute("aria-current", String(b.textContent === name));
+    const code = $("code");
+    code.textContent = "";
+    (state.files[name] || "").replace(/\n$/, "").split("\n").forEach((line, i) => {
+      const span = el("span", "ln", line || " ");
+      span.dataset.n = String(i + 1);
+      code.append(span);
+    });
+  }
+
+  // -- task box -------------------------------------------------------------------------------
+  function updateCount() {
+    const max = state.status?.max_task_chars || 600;
+    $("count").textContent = `${$("task").value.length}/${max}`;
+  }
+  $("task").addEventListener("input", updateCount);
+
+  // -- timeline -------------------------------------------------------------------------------
+  const toolLines = new Map();
+  function add(icon, cls, parts, sub) {
+    $("empty").hidden = true;
+    const li = el("li", cls || "");
+    li.append(el("span", "ic", icon));
+    const tx = el("span", "tx");
+    for (const p of parts) tx.append(typeof p === "string" ? document.createTextNode(p) : p);
+    if (sub) tx.append(el("span", "sub", sub));
+    li.append(tx);
+    $("timeline").append(li);
+    li.scrollIntoView({ block: "nearest" });
+    return li;
+  }
+  const code = (t) => el("code", "", t);
+
+  function argsText(name, args) {
+    if (name === "read_file") return args.path || "";
+    if (name === "search_codebase") return JSON.stringify(args.query || "");
+    if (name === "run_terminal_command") return args.command || "";
+    if (args.symbol) return args.symbol;
+    return JSON.stringify(args).slice(0, 120);
+  }
+
+  function onEvent(e) {
+    switch (e.type) {
+      case "status": add("·", "", [e.message]); break;
+      case "retrieval":
+        add("⌕", "", ["Retrieved context from ", code(String(e.files.length)), " file(s)"], e.files.join("  "));
+        break;
+      case "text": {
+        $("raw").hidden = false;
+        const s = $("stream");
+        s.append(document.createTextNode(e.text));
+        s.scrollTop = s.scrollHeight;
+        break;
+      }
+      case "tool": toolLines.set(e.id, add("→", "", [e.name.replace(/_/g, " ") + " ", code(argsText(e.name, e.args))])); break;
+      case "tool_done": {
+        const li = toolLines.get(e.id);
+        if (li) { li.className = e.error ? "warn" : "ok"; li.querySelector(".ic").textContent = e.error ? "!" : "✓"; }
+        break;
+      }
+      case "approval":
+        if (e.allowed) add("▶", "ok", ["Ran ", code(e.command)], e.category);
+        else add("⛔", "bad", ["Blocked ", code(e.command)], `${e.category}: ${e.reason}`);
+        break;
+      case "edit": add("✎", "", [e.new_file ? "New file " : "Proposed an edit to ", code(e.path)]); break;
+      case "rejected": add("↺", "warn", [`Edit rejected by Fast Apply (attempt ${e.attempt}); the model gets the reason and retries`], e.feedback); break;
+      case "validating": add("⧗", "", [`Validating in a shadow worktree (round ${e.attempt}): lint, type check, tests`]); break;
+      case "validated":
+        add(e.ok ? "✓" : "✗", e.ok ? "ok" : "warn", [e.ok ? "Validation passed" : "Validation found problems; feeding them back"], e.summary);
+        break;
+      case "done": showResult(e); break;
+      case "error": add("✗", "bad", [e.message]); break;
+    }
+  }
+
+  // -- result ---------------------------------------------------------------------------------
+  function showResult(r) {
+    $("result").hidden = false;
+    const head = $("resultHead");
+    head.textContent = "";
+    const ok = r.status === "SUCCEEDED";
+    const validated = r.validation ? r.validation.ok : null;
+    const label = !ok ? r.status.toLowerCase() : r.diff ? (validated ? "edits validated" : validated === false ? "edits need review" : "edits proposed") : "answered";
+    head.append(el("span", "badge " + (!ok ? "bad" : validated === false ? "warn" : "ok"), label));
+    const u = r.usage;
+    const cost = u.cost_usd == null ? "cost unknown" : `$${u.cost_usd.toFixed(3)}`;
+    head.append(el("span", "meta", `${u.llm_calls} model calls · ${u.tool_calls} tool calls · ${(u.input_tokens / 1000).toFixed(1)}k in / ${(u.output_tokens / 1000).toFixed(1)}k out · ${cost} · ${u.seconds}s`));
+
+    const checks = $("checks");
+    checks.textContent = "";
+    if (r.validation) {
+      const v = r.validation;
+      for (const part of v.summary.split(" | ")) {
+        if (part) checks.append(el("span", "badge " + (/( ok|now pass)$/.test(part) ? "ok" : "warn"), part));
+      }
+    }
+    $("answer").textContent = r.message + (r.answer && !r.diff ? "\n\n" + r.answer : "");
+    const diff = $("diff");
+    diff.textContent = "";
+    diff.hidden = !r.diff;
+    for (const line of r.diff.replace(/\n$/, "").split("\n")) {
+      let cls = "";
+      if (line.startsWith("+++") || line.startsWith("---")) cls = "f";
+      else if (line.startsWith("@@")) cls = "h";
+      else if (line.startsWith("+")) cls = "a";
+      else if (line.startsWith("-")) cls = "d";
+      diff.append(el("span", cls, line || " "));
+    }
+    $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // -- running --------------------------------------------------------------------------------
+  function setRunning(on) {
+    state.running = on;
+    $("run").disabled = on;
+    $("stop").hidden = !on;
+    $("task").disabled = on;
+    for (const b of document.querySelectorAll(".sample, .task")) b.disabled = on;
+  }
+
+  async function run() {
+    const task = $("task").value.trim();
+    if (task.length < 3) { showNotice("Describe the task first (or pick a suggestion)."); return; }
+    showNotice("");
+    $("timeline").textContent = ""; $("stream").textContent = ""; $("raw").hidden = true;
+    $("result").hidden = true; $("empty").hidden = false; toolLines.clear();
+    setRunning(true);
+    state.controller = new AbortController();
+    try {
+      const resp = await fetch("api/run", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sample: state.sample.id, task }), signal: state.controller.signal,
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        showNotice(body.error || body.detail || `Request failed (${resp.status}).`);
+        return;
+      }
+      add("·", "", ["Run started on ", code(state.sample.title)]);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let cut;
+        while ((cut = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, cut); buf = buf.slice(cut + 2);
+          for (const line of chunk.split("\n")) if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)));
+        }
+      }
+    } catch (err) {
+      if (err.name === "AbortError") add("■", "warn", ["Stopped. The run was cancelled on the server too."]);
+      else add("✗", "bad", ["Connection lost: " + err.message]);
+    } finally {
+      setRunning(false);
+      refreshStatus();
+    }
+  }
+  $("run").addEventListener("click", run);
+  $("stop").addEventListener("click", () => state.controller?.abort());
+  $("task").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) run(); });
+
+  refreshStatus();
+  loadSamples();
+})();
+</script>
+</body>
+</html>

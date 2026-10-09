@@ -139,7 +139,7 @@ def run_headless(
         fix_attempts=result.usage.fix_attempts,
         rejections=result.rejections,
         files_changed=sorted(result.plan.changes) if result.plan else [],
-        validation=_validation_dict(result.validation),
+        validation=validation_dict(result.validation),
         seconds=round(time.monotonic() - started, 1),
         events=events,
     )
@@ -147,7 +147,7 @@ def run_headless(
     return report
 
 
-def _validation_dict(report) -> dict | None:
+def validation_dict(report) -> dict | None:
     if report is None:
         return None
     return {
