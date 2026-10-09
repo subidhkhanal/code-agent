@@ -44,6 +44,7 @@ class SpendGuard:
         runs_per_visitor: int,
         max_concurrent: int,
         reserve_usd: float,
+        salt: bytes | None = None,
         clock=_today,
     ) -> None:
         self.state_file = state_file
@@ -53,7 +54,8 @@ class SpendGuard:
         self.reserve_usd = reserve_usd
         self._clock = clock
         self._lock = threading.Lock()
-        self._salt = secrets.token_bytes(16)
+        # A stable salt keeps visitor ids (and their run counts) valid across restarts.
+        self._salt = salt if salt is not None else secrets.token_bytes(16)
         self._active = 0
         self._reserved = 0.0
         self._day, self._spent, self._runs = self._load()

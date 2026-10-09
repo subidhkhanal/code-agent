@@ -92,7 +92,15 @@ for repos of a few files) and pyright (ruff and the tests still run): ~65 s and 
   container, and can disturb a concurrent run (for example by filling `/tmp`). The container is
   disposable and restarts clean; the samples are tiny; runs are short and capped. Per-visitor
   sandboxes (the headless Docker mode of ADR 0009) are the path if this ever matters.
-- **Per-visitor limits depend on the proxy.** `PLAYGROUND_PROXY_HOPS` picks the address the
+- **The day's spend counter lives on local disk, and Render's free disk is wiped whenever the
+  service sleeps and wakes** (after 15 idle minutes). So the USD 3/day cap holds per awake
+  period, not per calendar day: someone who exhausts it, waits for the service to sleep, and
+  comes back gets a new allowance. The provider-side monthly spend limit on the key is what
+  bounds the total; moving the counter to a free external store would make the daily cap exact.
+  Visitor ids survive restarts (their salt is derived from the API key).
+- **Per-visitor limits depend on the proxy.** On Render (behind Cloudflare) the app trusts
+  `cf-connecting-ip`, which Cloudflare overwrites; a first deploy that relied on
+  `X-Forwarded-For` was spoofable, which a live check caught. `PLAYGROUND_PROXY_HOPS` picks the address the
   host's proxy appended to `X-Forwarded-For`. If it is set wrong, visitors share or can spoof an
   identity. The global budget does not depend on it.
 - The free plan sleeps after 15 idle minutes; the first visit after that waits one to two

@@ -249,6 +249,22 @@ def test_proxy_hops_pick_the_address_the_proxy_saw(tmp_path: Path):
     assert c.get("/api/status", headers=again).json()["runs_left"] == 0
 
 
+def test_trusted_client_ip_header_wins_over_forwarded_for(tmp_path: Path):
+    c = client(tmp_path, [*fix_script()], client_ip_header="cf-connecting-ip", proxy_hops=1,
+               runs_per_visitor=1)  # fmt: skip
+    c.post("/api/run", json={"sample": "auth-service", "task": "fix it"},
+           headers={"CF-Connecting-IP": "198.51.100.4"})  # fmt: skip
+    spoofed = {"CF-Connecting-IP": "198.51.100.4", "X-Forwarded-For": "2.2.2.2"}
+    assert c.get("/api/status", headers=spoofed).json()["runs_left"] == 0
+    other = {"CF-Connecting-IP": "203.0.113.9"}
+    assert c.get("/api/status", headers=other).json()["runs_left"] == 1
+
+
+def test_visitor_salt_is_stable_across_restarts_when_derived(tmp_path: Path):
+    a = guard(tmp_path, salt=b"same")
+    assert a.visitor_id("203.0.113.7") == guard(tmp_path, salt=b"same").visitor_id("203.0.113.7")
+
+
 # -- key protection ------------------------------------------------------------------------------
 
 

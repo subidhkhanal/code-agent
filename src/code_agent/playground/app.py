@@ -14,6 +14,7 @@ cancels the run.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -51,8 +52,11 @@ class Settings:
     run_max_seconds: int = 240
     run_max_tool_calls: int = 25
     max_task_chars: int = 600
-    # How many reverse proxies in front of the app append to X-Forwarded-For (0 = use the
-    # socket peer). Only the per-visitor limit depends on this; the daily budget is global.
+    # Where the visitor's address comes from. A header the edge proxy *overwrites* (e.g.
+    # Cloudflare's cf-connecting-ip) is best: clients can't spoof it. Otherwise, how many
+    # reverse proxies append to X-Forwarded-For (0 = use the socket peer). Only the
+    # per-visitor limit depends on this; the daily budget is global.
+    client_ip_header: str = ""
     proxy_hops: int = 0
     state_dir: Path = field(default_factory=lambda: Path.home() / ".cache" / "code-agent")
 
@@ -67,6 +71,7 @@ class Settings:
             run_max_seconds=int(_env("RUN_MAX_SECONDS", str(d.run_max_seconds))),
             run_max_tool_calls=int(_env("RUN_MAX_TOOL_CALLS", str(d.run_max_tool_calls))),
             max_task_chars=int(_env("MAX_TASK_CHARS", str(d.max_task_chars))),
+            client_ip_header=_env("CLIENT_IP_HEADER", d.client_ip_header).lower(),
             proxy_hops=int(_env("PROXY_HOPS", str(d.proxy_hops))),
             state_dir=Path(_env("STATE_DIR", str(d.state_dir))),
         )
@@ -114,6 +119,10 @@ def create_app(
         runs_per_visitor=settings.runs_per_visitor,
         max_concurrent=settings.max_concurrent,
         reserve_usd=settings.reserve_usd,
+        # Derived from the API key: secret, yet the same after a restart.
+        salt=hashlib.sha256(b"playground-visitor:" + server_secrets[0].encode()).digest()
+        if server_secrets
+        else None,
     )
     limits = RunLimits(settings.run_max_usd, settings.run_max_seconds, settings.run_max_tool_calls)
     strong = cfg.llm.routes.get("strong", [""])[0]
@@ -121,6 +130,9 @@ def create_app(
 
     def visitor(request: Request) -> str:
         address = request.client.host if request.client else "unknown"
+        trusted = request.headers.get(settings.client_ip_header, "").strip()
+        if settings.client_ip_header and trusted:
+            return guard.visitor_id(trusted)
         if settings.proxy_hops > 0:
             chain = [a.strip() for a in request.headers.get("x-forwarded-for", "").split(",")]
             chain = [a for a in chain if a]

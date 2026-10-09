@@ -12,5 +12,9 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false                 # asked for at setup; never stored in the repo
+      # Render is fronted by Cloudflare, which overwrites this header with the real client
+      # address, so visitors can't spoof their identity for the per-visitor limit.
+      - key: PLAYGROUND_CLIENT_IP_HEADER
+        value: cf-connecting-ip
       - key: PLAYGROUND_PROXY_HOPS
         value: "1"

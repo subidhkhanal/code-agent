@@ -33,6 +33,7 @@ Environment variables, read at startup:
 | `PLAYGROUND_RUN_MAX_TOOL_CALLS` | `25` | Tool-call cap per run |
 | `PLAYGROUND_MAX_CONCURRENT` | `2` | Runs at the same time |
 | `PLAYGROUND_MAX_TASK_CHARS` | `600` | Longest task description |
+| `PLAYGROUND_CLIENT_IP_HEADER` | unset (`cf-connecting-ip` on Render) | Header the edge proxy overwrites with the client address; preferred over `X-Forwarded-For` |
 | `PLAYGROUND_PROXY_HOPS` | `0` (`1` in the image) | Reverse proxies that append to `X-Forwarded-For` |
 | `PLAYGROUND_STATE_DIR` | `~/.cache/code-agent` | Where the day's spend is persisted |
 
