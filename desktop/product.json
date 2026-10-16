@@ -1,0 +1,32 @@
+{
+	"nameShort": "Code Agent",
+	"nameLong": "Code Agent",
+	"applicationName": "code-agent",
+	"dataFolderName": ".code-agent",
+	"sharedDataFolderName": ".code-agent-shared",
+	"win32MutexName": "codeagent",
+	"win32DirName": "Code Agent",
+	"win32NameVersion": "Code Agent",
+	"win32RegValueName": "CodeAgent",
+	"win32x64AppId": "{{7236A7EE-5841-49F2-8D3B-B44BD293600D}",
+	"win32arm64AppId": "{{1B27D9F0-99EA-4176-B688-4AC0FF60C672}",
+	"win32x64UserAppId": "{{EFC58B8E-AD66-4DB8-92CF-BBA2C024E814}",
+	"win32arm64UserAppId": "{{E66C171E-CCBE-4E27-89BF-B7E35DA9377C}",
+	"win32AppUserModelId": "CodeAgent.CodeAgent",
+	"win32ShellNameShort": "Code &Agent",
+	"win32TunnelServiceMutex": "codeagent-tunnelservice",
+	"win32TunnelMutex": "codeagent-tunnel",
+	"serverApplicationName": "code-agent-server",
+	"serverDataFolderName": ".code-agent-server",
+	"tunnelApplicationName": "code-agent-tunnel",
+	"urlProtocol": "code-agent",
+	"licenseUrl": "https://github.com/subidhkhanal/code-agent/blob/main/desktop/LICENSE-VSCODE.txt",
+	"reportIssueUrl": "https://github.com/subidhkhanal/code-agent/issues/new",
+	"extensionsGallery": {
+		"serviceUrl": "https://open-vsx.org/vscode/gallery",
+		"itemUrl": "https://open-vsx.org/vscode/item",
+		"latestUrlTemplate": "https://open-vsx.org/vscode/gallery/{publisher}/{name}/latest",
+		"controlUrl": "https://raw.githubusercontent.com/EclipseFdn/publish-extensions/refs/heads/master/extension-control/extensions.json"
+	},
+	"linkProtectionTrustedDomains": ["https://open-vsx.org", "https://github.com", "https://console.anthropic.com"]
+}

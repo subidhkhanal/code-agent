@@ -1,0 +1,91 @@
+name: Desktop
+
+# Builds Code Agent for Windows: VS Code OSS at a pinned release, branded (desktop/product.json),
+# with the agents extension (desktop/extension) built in. Produces a portable zip and a per-user
+# installer (.exe). Long job (~1-2 h); runs on demand and for desktop-v* tags.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+
+permissions:
+  contents: write  # attach installers to the release for desktop-v* tags
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 300
+    env:
+      VSCODE_REF: "1.142.0"
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      npm_config_audit: "false"
+      npm_config_fund: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: code-agent
+
+      - name: Fetch VS Code source
+        shell: bash
+        run: git clone --depth 1 --branch "$VSCODE_REF" https://github.com/microsoft/vscode.git vscode
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: vscode/.nvmrc
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"  # node-gyp, for VS Code's native modules
+
+      - name: Build the agents extension
+        working-directory: code-agent/desktop/extension
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build -- --minify
+
+      - name: Brand VS Code and add the extension
+        run: node code-agent/desktop/scripts/prepare.mjs vscode
+
+      - name: Install VS Code dependencies
+        working-directory: vscode
+        shell: bash
+        run: |
+          for i in 1 2 3; do npm ci && break; echo "npm ci failed (attempt $i), retrying"; sleep $((30 * i)); done
+          test -d node_modules
+
+      - name: Compile and package (win32-x64)
+        working-directory: vscode
+        run: npm run gulp vscode-win32-x64-min
+
+      - name: Build the installer
+        working-directory: vscode
+        run: |
+          npm run gulp vscode-win32-x64-inno-updater
+          npm run gulp vscode-win32-x64-user-setup
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Compress-Archive -Path VSCode-win32-x64\* -DestinationPath out\CodeAgent-win32-x64.zip
+          Get-ChildItem vscode\.build\win32-x64\user-setup\*.exe | Copy-Item -Destination out\CodeAgentUserSetup-x64.exe
+          Get-ChildItem out | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-agent-windows-x64
+          path: out/*
+          retention-days: 14
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: code-agent
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" ../out/* --title "Code Agent ${GITHUB_REF_NAME#desktop-v}" \
+            --notes "Windows 11 (x64). Unsigned: Windows SmartScreen may warn on first run." \
+            || gh release upload "$GITHUB_REF_NAME" ../out/* --clobber
