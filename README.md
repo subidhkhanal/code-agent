@@ -222,7 +222,8 @@ traps), describe a task, and watch retrieval, tool calls, blocked commands, edit
 validation stream in, ending with a validated diff.
 
 It runs on one shared server with the owner's API key, so the limits are in code: a global daily
-budget with per-run reservations, a per-run cost cap, a few runs per visitor per day, and only
+budget with per-run reservations, a per-run cost cap, 5 free runs per device (then visitors add
+their own API key, kept only in their browser), and only
 test/lint commands allowed. The key never sits in the server's environment (it is handed over
 through a pipe), the server process is non-dumpable so the tests it runs can't read its memory,
 and every byte sent to the browser is scrubbed of it.

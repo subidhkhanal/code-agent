@@ -99,6 +99,13 @@
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #06130b; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
   .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .keybox { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+            background: var(--panel-2); }
+  .keybox .note { margin: 6px 0 0; }
+  .keybox input { flex: 1; min-width: 0; background: var(--panel); color: var(--text); border: 1px solid var(--line);
+                  border-radius: 9px; padding: 9px 11px; font: 13px/1.2 "JetBrains Mono", monospace; }
+  .keynote { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .linkish { background: none; border: 0; color: var(--accent-2); cursor: pointer; font: inherit; padding: 0 0 0 6px; }
   .notice { border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 9px 12px;
             font-size: 13.5px; margin-top: 10px; display: none; }
   .timeline { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
@@ -174,6 +181,19 @@
           <span class="count" id="count"></span>
         </div>
         <div class="notice" id="notice" role="status"></div>
+        <div class="keybox" id="keybox" hidden>
+          <label for="apikey"><b>Keep going with your own API key</b></label>
+          <p class="note">You've used the free runs on this device. Paste an
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Anthropic API key</a>
+            to continue; runs are billed to it (usually a few cents each, capped per run). It's saved only in this
+            browser's local storage and sent with your runs over HTTPS. The server never stores or logs it.</p>
+          <div class="row">
+            <input type="password" id="apikey" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+            <button class="btn primary" id="savekey">Save key</button>
+          </div>
+        </div>
+        <div class="keynote" id="keynote" hidden>Using your API key.
+          <button class="linkish" id="forgetkey">Forget it</button></div>
       </div>
 
       <div class="card">
@@ -214,32 +234,66 @@
   };
   const metaApi = document.querySelector('meta[name="playground-api"]')?.content || "";
   const API = metaApi && !metaApi.endsWith("/") ? metaApi + "/" : metaApi;
+  // Browser storage can throw (private mode, blocked storage): fall back to memory then.
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
+  };
+  const KEY_ITEM = "codeagent.anthropicKey", DEVICE_ITEM = "codeagent.deviceId";
+  let deviceId = store.get(DEVICE_ITEM);
+  if (!deviceId) {
+    deviceId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+    store.set(DEVICE_ITEM, deviceId);
+  }
+  const apiHeaders = (withKey) => {
+    const h = { "X-Device-Id": deviceId };
+    const key = store.get(KEY_ITEM);
+    if (withKey && key) h["X-Anthropic-Key"] = key;
+    return h;
+  };
+  const usingOwnKey = () => Boolean(state.status && state.status.free_runs_left === 0 && store.get(KEY_ITEM));
+  function renderKeyUi() {
+    const s = state.status;
+    const needKey = Boolean(s && s.byok && s.free_runs_left === 0);
+    const hasKey = Boolean(store.get(KEY_ITEM));
+    $("keybox").hidden = !(needKey && !hasKey);
+    $("keynote").hidden = !(needKey && hasKey);
+    const pill = $("pill");
+    pill.textContent = "";
+    if (!s) return;
+    if (needKey && hasKey) pill.append(el("b", "", "your key"), " · unlimited runs");
+    else pill.append(el("b", "", `${s.free_runs_left}/${s.free_runs_total}`), " free runs left");
+  }
   const state = { sample: null, samples: [], files: {}, running: false, controller: null, status: null };
 
   // -- status ---------------------------------------------------------------------------------
   async function refreshStatus() {
     // The free backend sleeps when idle; the first request wakes it, which takes a while.
-    const slow = setTimeout(() => showNotice("Waking up the server (it sleeps when nobody is using it). This can take a minute or two."), 3000);
+    const slow = setTimeout(() => showNotice("Waking up the server (it sleeps when nobody is using it). This can take a minute or two.", true), 3000);
     try {
-      const s = await (await fetch(API + "api/status")).json();
+      const s = await (await fetch(API + "api/status", { headers: apiHeaders(false) })).json();
       clearTimeout(slow);
-      showNotice("");
+      if (systemNotice) showNotice("");
       state.status = s;
-      const pill = $("pill");
-      pill.textContent = "";
-      pill.append(el("b", "", `${s.runs_left}/${s.runs_per_day}`), " runs left today");
-      if (!s.available) showNotice("The model is unavailable right now. Please try again later.");
-      else if (!s.budget_open) showNotice("Today's playground budget is used up. It resets at 00:00 UTC.");
+      renderKeyUi();
+      if (!s.available && !s.byok) showNotice("The agent is unavailable right now. Please try again later.");
       $("task").maxLength = s.max_task_chars;
       updateCount();
     } catch {
       clearTimeout(slow);
       $("pill").textContent = "offline";
-      showNotice("Couldn't reach the playground server. It may be starting up; this page retries on its own.");
+      showNotice("Couldn't reach the playground server. It may be starting up; this page retries on its own.", true);
       setTimeout(refreshStatus, 15000);
     }
   }
-  function showNotice(text) { const n = $("notice"); n.textContent = text; n.style.display = text ? "block" : "none"; }
+  let systemNotice = false;  // true while the notice is one a status refresh may replace
+  function showNotice(text, system = false) {
+    const n = $("notice");
+    n.textContent = text;
+    n.style.display = text ? "block" : "none";
+    systemNotice = system && Boolean(text);
+  }
 
   // -- samples and code browser ---------------------------------------------------------------
   async function loadSamples() {
@@ -356,7 +410,10 @@
         add(e.ok ? "✓" : "✗", e.ok ? "ok" : "warn", [e.ok ? "Validation passed" : "Validation found problems; feeding them back"], e.summary);
         break;
       case "done": showResult(e); break;
-      case "error": add("✗", "bad", [e.message]); break;
+      case "error":
+        if (e.code === "invalid_key") { store.del(KEY_ITEM); renderKeyUi(); }
+        add("✗", "bad", [e.message]);
+        break;
     }
   }
 
@@ -419,6 +476,12 @@
   async function run() {
     const task = $("task").value.trim();
     if (task.length < 3) { showNotice("Describe the task first (or pick a suggestion)."); return; }
+    if (state.status && state.status.byok && state.status.free_runs_left === 0 && !store.get(KEY_ITEM)) {
+      renderKeyUi();
+      showNotice("You've used your free runs. Add your API key below to keep going.");
+      $("apikey").focus();
+      return;
+    }
     showNotice("");
     $("timeline").textContent = ""; $("stream").textContent = ""; $("raw").hidden = true;
     $("result").hidden = true; $("empty").hidden = false; toolLines.clear();
@@ -426,11 +489,14 @@
     state.controller = new AbortController();
     try {
       const resp = await fetch(API + "api/run", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", ...apiHeaders(usingOwnKey()) },
         body: JSON.stringify({ sample: state.sample.id, task }), signal: state.controller.signal,
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
+        if (body.code === "invalid_key") store.del(KEY_ITEM);
+        if (body.code === "byok_required" && state.status) state.status.free_runs_left = 0;
+        renderKeyUi();
         showNotice(body.error || body.detail || `Request failed (${resp.status}).`);
         return;
       }
@@ -457,6 +523,15 @@
     }
   }
   $("run").addEventListener("click", run);
+  $("savekey").addEventListener("click", () => {
+    const key = $("apikey").value.trim();
+    if (!key.startsWith("sk-ant-")) { showNotice("That doesn't look like an Anthropic API key (it starts with sk-ant-)."); return; }
+    store.set(KEY_ITEM, key);
+    $("apikey").value = "";
+    showNotice("");
+    renderKeyUi();
+  });
+  $("forgetkey").addEventListener("click", () => { store.del(KEY_ITEM); renderKeyUi(); });
   $("stop").addEventListener("click", () => state.controller?.abort());
   $("task").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) run(); });
 

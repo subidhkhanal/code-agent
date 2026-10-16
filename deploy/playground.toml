@@ -15,15 +15,15 @@ timeout_s = 180
 # One model for both roles. Checked against the live model list at startup; runs are
 # disabled with a clear message if it is not offered.
 [llm.routes]
-cheap = ["anthropic:claude-opus-5-5"]
-strong = ["anthropic:claude-opus-5-5"]
+cheap = ["anthropic:claude-sonnet-5"]
+strong = ["anthropic:claude-sonnet-5"]
 
 # USD per million tokens. Cache writes use the 5-minute rate.
-[llm.pricing."anthropic:claude-opus-5-5"]
-input_per_mtok = 4.0
-output_per_mtok = 20.0
+[llm.pricing."anthropic:claude-sonnet-5"]
+input_per_mtok = 2.0
+output_per_mtok = 10.0
 cache_read_per_mtok = 0.20
-cache_write_per_mtok = 5.0
+cache_write_per_mtok = 2.50
 
 [retrieval]
 max_context_tokens = 8000    # the sample repos are tiny

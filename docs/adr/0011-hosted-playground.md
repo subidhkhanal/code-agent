@@ -52,7 +52,8 @@ at the *higher* rate, so a missing price can only overstate cost.
 | Global daily budget | USD 3 | A shared link can't drain the credit: at most ~USD 90 a month even if every day is used up |
 | Per-run reservation | 2 × the per-run cap | Concurrent runs reserve worst case up front, so they can't jointly overshoot the day |
 | Per-run cost cap | USD 0.50 | Checked before every model call (existing `BudgetConfig.max_usd`) |
-| Runs per visitor per day | 3 | Fairness; visitors are salted IP hashes, never stored raw |
+| Free runs per device | 5, ever | A device is a random id the browser keeps; after that, the visitor brings their own key |
+| Free runs per network address | 15, ever | Backstop for cleared browser storage; ids are salted hashes, never stored raw |
 | Concurrent runs | 2 | Bounds CPU on a free host |
 
 Unknown cost is charged as the full reservation. Spend persists to a file so a restart doesn't
