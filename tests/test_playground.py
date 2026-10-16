@@ -206,7 +206,8 @@ def test_api_lists_samples_files_and_status(tmp_path: Path):
     files = c.get("/api/samples/auth-service/files").json()
     assert "auth/tokens.py" in files
     status = c.get("/api/status").json()
-    assert status["runs_left"] == 2 and status["model"] == "fake-strong" and status["available"]
+    assert status["runs_left"] == 2 and status["available"]
+    assert "fake" not in json.dumps(status)  # the page never names the model
     assert c.get("/api/samples/nope/files").status_code == 404
     assert c.get("/").status_code == 200
 
@@ -263,6 +264,17 @@ def test_trusted_client_ip_header_wins_over_forwarded_for(tmp_path: Path):
 def test_visitor_salt_is_stable_across_restarts_when_derived(tmp_path: Path):
     a = guard(tmp_path, salt=b"same")
     assert a.visitor_id("203.0.113.7") == guard(tmp_path, salt=b"same").visitor_id("203.0.113.7")
+
+
+def test_model_ids_never_reach_the_browser(tmp_path: Path):
+    from code_agent.llm.types import ProviderError
+
+    down = FakeTurn(error=ProviderError("fake-strong overloaded", retryable=False))
+    c = client(tmp_path, [REWRITE, down])
+    r = c.post("/api/run", json={"sample": "auth-service", "task": "fix it"})
+    events = stream_events(r)
+    assert events[-1]["type"] == "done" and events[-1]["status"] == "FAILED"
+    assert "fake-strong" not in r.text and "fake:" not in r.text and "the model" in r.text
 
 
 # -- key protection ------------------------------------------------------------------------------

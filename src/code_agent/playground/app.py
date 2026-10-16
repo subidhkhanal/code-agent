@@ -3,12 +3,13 @@
     GET  /                       the UI
     GET  /api/samples            sample repos and suggested tasks
     GET  /api/samples/{id}/files a sample's source, for the code browser
-    GET  /api/status             runs left for this visitor, budget open, busy, model
+    GET  /api/status             runs left for this visitor, budget open, busy
     POST /api/run                {sample, task} -> text/event-stream of run events
 
 Every byte sent to the browser passes through `scrub`: the server's own secrets are replaced by
-exact match, then the outbound secret scanner runs over the rest. Closing the browser tab
-cancels the run.
+exact match, then the outbound secret scanner runs over the rest. Configured model ids are
+replaced too: the page never says which model is behind it (error messages name routes).
+Closing the browser tab cancels the run.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import hashlib
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -87,12 +88,16 @@ class Settings:
         return 2 * self.run_max_usd
 
 
-def make_scrubber(server_secrets: list[str]) -> Callable[[str], str]:
+def make_scrubber(server_secrets: list[str], hidden: Sequence[str] = ()) -> Callable[[str], str]:
     secrets_ = [s for s in server_secrets if s]
+    # Longest first, so "provider:model" is replaced before its "model" part.
+    hidden_ = sorted({h for h in hidden if h}, key=len, reverse=True)
 
     def scrub(text: str) -> str:
         for value in secrets_:
             text = text.replace(value, "[REDACTED:server_secret]")
+        for value in hidden_:
+            text = text.replace(value, "the model")
         return redact(text)[0]
 
     return scrub
@@ -123,7 +128,8 @@ def create_app(
             allow_headers=["Content-Type"],
         )
     samples: dict[str, Sample] = load_samples()
-    scrub = make_scrubber(server_secrets)
+    routes = [spec for specs in cfg.llm.routes.values() for spec in specs]
+    scrub = make_scrubber(server_secrets, routes + [r.partition(":")[2] for r in routes])
     guard = guard or SpendGuard(
         settings.state_dir / "playground-spend.json",
         daily_usd=settings.daily_usd,
@@ -136,8 +142,6 @@ def create_app(
         else None,
     )
     limits = RunLimits(settings.run_max_usd, settings.run_max_seconds, settings.run_max_tool_calls)
-    strong = cfg.llm.routes.get("strong", [""])[0]
-    model = strong.partition(":")[2] or strong
 
     def visitor(request: Request) -> str:
         address = request.client.host if request.client else "unknown"
@@ -175,7 +179,6 @@ def create_app(
     def status(request: Request) -> dict:
         return {
             **guard.status(visitor(request)),
-            "model": model,
             "available": model_error is None,
             "run_max_usd": settings.run_max_usd,
             "max_task_chars": settings.max_task_chars,

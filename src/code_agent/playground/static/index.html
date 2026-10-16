@@ -227,7 +227,7 @@
       state.status = s;
       const pill = $("pill");
       pill.textContent = "";
-      pill.append(el("b", "", s.model || "model"), ` · ${s.runs_left}/${s.runs_per_day} runs left today`);
+      pill.append(el("b", "", `${s.runs_left}/${s.runs_per_day}`), " runs left today");
       if (!s.available) showNotice("The model is unavailable right now. Please try again later.");
       else if (!s.budget_open) showNotice("Today's playground budget is used up. It resets at 00:00 UTC.");
       $("task").maxLength = s.max_task_chars;
