@@ -26,11 +26,9 @@ Environment variables, read at startup:
 
 | Variable | Default | |
 |---|---|---|
-| `PLAYGROUND_DAILY_USD` | `3.0` | Global spend per UTC day on free runs (the owner's key) |
-| `PLAYGROUND_FREE_RUNS_PER_DEVICE` | `5` | Free runs per browser, ever; after that the visitor adds their own key |
-| `PLAYGROUND_FREE_RUNS_PER_IP` | `15` | Free runs per network address, ever (backstop for cleared browser storage) |
-| `PLAYGROUND_RUN_MAX_USD` | `0.5` | Cost cap per free run (each free run reserves twice this) |
-| `PLAYGROUND_BYOK_RUN_MAX_USD` | `1.0` | Cost cap per run on a visitor's own key |
+| `PLAYGROUND_DAILY_USD` | `3.0` | Global spend per UTC day |
+| `PLAYGROUND_RUNS_PER_VISITOR` | `3` | Runs per visitor per day |
+| `PLAYGROUND_RUN_MAX_USD` | `0.5` | Cost cap per run (each run reserves twice this) |
 | `PLAYGROUND_RUN_MAX_SECONDS` | `240` | Time cap per run |
 | `PLAYGROUND_RUN_MAX_TOOL_CALLS` | `25` | Tool-call cap per run |
 | `PLAYGROUND_MAX_CONCURRENT` | `2` | Runs at the same time |

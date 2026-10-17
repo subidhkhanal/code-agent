@@ -206,7 +206,6 @@ def run_task(
     limits: RunLimits,
     cancel: CancelToken,
     emit: Emit,
-    byok: bool = False,
 ) -> float | None:
     """Run one task and stream its events through `emit`. Returns the measured cost in USD
     (None if unknown). Ends with exactly one `done` or `error` event."""
@@ -230,16 +229,7 @@ def run_task(
         )  # fmt: skip
         problem = session.check_generation()
         if problem:
-            if byok and ("HTTP 401" in problem or "HTTP 403" in problem):
-                emit(
-                    {
-                        "type": "error",
-                        "code": "invalid_key",
-                        "message": "Anthropic rejected your API key. Check it and try again.",
-                    }
-                )
-            else:
-                emit({"type": "error", "message": f"model unavailable: {problem}"})
+            emit({"type": "error", "message": f"model unavailable: {problem}"})
             return gateway.total_cost_usd
         emit({"type": "status", "message": "indexing the repository"})
         session.refresh_index()

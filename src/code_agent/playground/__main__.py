@@ -106,14 +106,6 @@ def main() -> None:
             batch_size=cfg.index.embedding_batch_size,
         ))  # fmt: skip
 
-    def byok_providers(user_key: str) -> dict[str, Provider]:
-        """Fresh providers on the visitor's key; not cached, so each run verifies the key."""
-        fresh = build_providers(cfg.llm)
-        for provider in fresh.values():
-            if isinstance(provider, AnthropicProvider):
-                provider.api_key = user_key
-        return fresh
-
     app = create_app(
         cfg,
         dict(providers),
@@ -121,7 +113,6 @@ def main() -> None:
         settings=Settings.from_env(),
         server_secrets=[key] if key else [],
         model_error=model_error,
-        byok_providers=byok_providers,
     )
     uvicorn.run(app, host=args.host, port=args.port, proxy_headers=False, log_level="info")
 
